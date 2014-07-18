@@ -1,0 +1,53 @@
+{
+	"ImportPath": "github.com/TwitchScience/spade_edge",
+	"GoVersion": "go1.3",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/TwitchScience/aws_utils/common",
+			"Rev": "74ca435cd69fa5bfd87c24722f58885132664687"
+		},
+		{
+			"ImportPath": "github.com/TwitchScience/aws_utils/environment",
+			"Rev": "74ca435cd69fa5bfd87c24722f58885132664687"
+		},
+		{
+			"ImportPath": "github.com/TwitchScience/aws_utils/notifier",
+			"Rev": "74ca435cd69fa5bfd87c24722f58885132664687"
+		},
+		{
+			"ImportPath": "github.com/TwitchScience/aws_utils/uploader",
+			"Rev": "74ca435cd69fa5bfd87c24722f58885132664687"
+		},
+		{
+			"ImportPath": "github.com/TwitchScience/gologging/file_writer",
+			"Rev": "5587a0a0a6db26e14a2cf37db9cd99c2eedf3b9d"
+		},
+		{
+			"ImportPath": "github.com/TwitchScience/gologging/gologging",
+			"Rev": "5587a0a0a6db26e14a2cf37db9cd99c2eedf3b9d"
+		},
+		{
+			"ImportPath": "github.com/TwitchScience/gologging/key_name_generator",
+			"Rev": "5587a0a0a6db26e14a2cf37db9cd99c2eedf3b9d"
+		},
+		{
+			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
+			"Rev": "5b5607a786a6be31226ca2063e49695712aebc6d"
+		},
+		{
+			"ImportPath": "github.com/crowdmob/goamz/aws",
+			"Rev": "c5ba9ad45b6ac022326f0ff9762d6bac33ca8f88"
+		},
+		{
+			"ImportPath": "github.com/crowdmob/goamz/s3",
+			"Rev": "c5ba9ad45b6ac022326f0ff9762d6bac33ca8f88"
+		},
+		{
+			"ImportPath": "github.com/crowdmob/goamz/sqs",
+			"Rev": "c5ba9ad45b6ac022326f0ff9762d6bac33ca8f88"
+		}
+	]
+}
