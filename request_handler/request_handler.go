@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TwitchScience/aws_utils/environment"
+	"github.com/twitchscience/aws_utils/environment"
 
-	"github.com/TwitchScience/gologging/gologging"
-	"github.com/TwitchScience/spade_edge/uuid"
+	"github.com/twitchscience/gologging/gologging"
+	"github.com/twitchscience/spade_edge/uuid"
 	"github.com/cactus/go-statsd-client/statsd"
 )
 

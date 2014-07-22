@@ -1,7 +1,7 @@
 #!/bin/bash --
 set -e -u -o pipefail
 
-export SRCDIR="/home/vagrant/go/src/github.com/TwitchScience/spade_edge"
+export SRCDIR="/home/vagrant/go/src/github.com/twitchscience/spade_edge"
 export PKGDIR="/tmp/pkg"
 export DEPLOYDIR="${PKGDIR}/deploy"
 export SUPPORTDIR="${PKGDIR}/support"

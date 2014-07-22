@@ -5,13 +5,13 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/TwitchScience/aws_utils/environment"
-	"github.com/TwitchScience/aws_utils/notifier"
-	"github.com/TwitchScience/aws_utils/uploader"
+	"github.com/twitchscience/aws_utils/environment"
+	"github.com/twitchscience/aws_utils/notifier"
+	"github.com/twitchscience/aws_utils/uploader"
 
-	"github.com/TwitchScience/gologging/gologging"
-	gen "github.com/TwitchScience/gologging/key_name_generator"
-	"github.com/TwitchScience/spade_edge/request_handler"
+	"github.com/twitchscience/gologging/gologging"
+	gen "github.com/twitchscience/gologging/key_name_generator"
+	"github.com/twitchscience/spade_edge/request_handler"
 
 	"log"
 	"net/http"
