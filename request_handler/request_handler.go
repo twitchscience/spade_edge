@@ -64,8 +64,8 @@ func (a *FileAuditLogger) Close() {
 }
 
 func (a *FileAuditLogger) Log(log EventRecord) {
-	a.AuditLogger.Log(log.AuditTrail())
-	a.SpadeLogger.Log(log.HttpRequest())
+	a.AuditLogger.Log("%s", log.AuditTrail())
+	a.SpadeLogger.Log("%s", log.HttpRequest())
 }
 
 func getIpFromHeader(headerKey string, header http.Header) string {
