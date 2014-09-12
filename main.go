@@ -135,7 +135,7 @@ func main() {
 		&DummyNotifierHarness{},
 		&uploader.S3UploaderBuilder{
 			Bucket:           auditBucket,
-			KeyNameGenerator: &gen.EdgeKeyNameGenerator{auditInfo},
+			KeyNameGenerator: &gen.EdgeKeyNameGenerator{Info: auditInfo},
 		},
 		BuildSQSErrorHarness(),
 		2,
@@ -150,7 +150,7 @@ func main() {
 		BuildSQSNotifierHarness(),
 		&uploader.S3UploaderBuilder{
 			Bucket:           eventBucket,
-			KeyNameGenerator: &gen.EdgeKeyNameGenerator{loggingInfo},
+			KeyNameGenerator: &gen.EdgeKeyNameGenerator{Info: loggingInfo},
 		},
 		BuildSQSErrorHarness(),
 		2,
