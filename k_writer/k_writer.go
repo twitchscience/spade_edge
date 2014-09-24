@@ -2,7 +2,6 @@ package k_writer
 
 import (
 	"log"
-	"sync/atomic"
 
 	"github.com/shopify/sarama"
 	"github.com/twitchscience/spade_edge/request_handler"
@@ -13,7 +12,8 @@ const BYPASS_THRESHOLD = 15
 type KWriter struct {
 	Producer       *sarama.Producer
 	stop           chan bool
-	errorsOccurred uint32
+	sendChan       chan request_handler.EventRecord
+	errorsOccurred int
 }
 
 func NewKWriter(brokers []string) (*KWriter, error) {
@@ -28,18 +28,29 @@ func NewKWriter(brokers []string) (*KWriter, error) {
 	k := &KWriter{
 		Producer:       p,
 		stop:           make(chan bool),
-		errorsOccurred: uint32(0),
+		sendChan:       make(chan request_handler.EventRecord),
+		errorsOccurred: 0,
 	}
-	go k.ListenForErrors()
+	go k.Listen()
 	return k, nil
 }
 
-func (l *KWriter) ListenForErrors() {
+func (l *KWriter) Listen() {
 	for {
 		select {
 		case e := <-l.Producer.Errors():
-			l.errorsOccurred = atomic.AddUint32(&l.errorsOccurred, uint32(1))
+			l.errorsOccurred++
 			log.Printf("Got Error while sending message: %+v\n", e)
+		case event := <-l.sendChan:
+			// Were going to use a ghetto circuit breaker (aka a fuse) until we have a real impl...
+			if l.errorsOccurred > BYPASS_THRESHOLD || l == nil {
+				continue
+			}
+			err := l.Producer.QueueMessage("edge", sarama.StringEncoder(event.GetId()), event)
+			if err != nil {
+				l.errorsOccurred++
+				log.Printf("GotError: %v\n", err)
+			}
 		case <-l.stop:
 			return
 		}
@@ -47,15 +58,7 @@ func (l *KWriter) ListenForErrors() {
 }
 
 func (l *KWriter) Log(e request_handler.EventRecord) {
-	// Were going to use a ghetto circuit breaker (aka a fuse) until we have a real impl...
-	if l.errorsOccurred > uint32(BYPASS_THRESHOLD) || l == nil {
-		return
-	}
-	err := l.Producer.QueueMessage("edge", sarama.StringEncoder(e.GetId()), e)
-	if err != nil {
-		l.errorsOccurred = atomic.AddUint32(&l.errorsOccurred, uint32(1))
-		log.Printf("GotError: %v\n", err)
-	}
+	l.sendChan <- e
 }
 
 func (l *KWriter) Close() {
