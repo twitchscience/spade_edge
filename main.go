@@ -11,6 +11,7 @@ import (
 
 	"github.com/twitchscience/gologging/gologging"
 	gen "github.com/twitchscience/gologging/key_name_generator"
+	"github.com/twitchscience/spade_edge/k_writer"
 	"github.com/twitchscience/spade_edge/request_handler"
 
 	"log"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -40,8 +42,14 @@ var (
 		":8888",
 		"Which port are we listenting on form: ':<port>' e.g. :8888",
 	)
+	brokers = flag.String("kafka_brokers", "",
+		"<addr>:<port> of kafka cluster can leave empty if not using")
 	VERSION, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
 )
+
+func ParseBrokerList(csv string) []string {
+	return strings.Split(csv, ",")
+}
 
 type DummyNotifierHarness struct {
 }
@@ -159,9 +167,17 @@ func main() {
 		log.Fatalf("Got Error while building logger: %s\n", err)
 	}
 
+	// We allow the klogger to be null incase we boot up with a bad kafka cluster.
+	brokerList := ParseBrokerList(*brokers)
+	klogger, err := k_writer.NewKWriter(brokerList)
+	if err != nil {
+		log.Printf("Got Error while building logger: %s + %v\n", err, brokerList)
+	}
+
 	logger := &request_handler.FileAuditLogger{
 		AuditLogger: auditLogger,
 		SpadeLogger: spadeEventLogger,
+		KLogger:     klogger,
 	}
 
 	sigc := make(chan os.Signal, 1)

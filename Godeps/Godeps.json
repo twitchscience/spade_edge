@@ -6,6 +6,11 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "code.google.com/p/snappy-go/snappy",
+			"Comment": "null-15",
+			"Rev": "12e4b4183793ac4b061921e7980845e750679fd0"
+		},
+		{
 			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
 			"Rev": "3999011ef0451eb805b0fa31f98cfb9261bd71be"
 		},
@@ -20,6 +25,10 @@
 		{
 			"ImportPath": "github.com/crowdmob/goamz/sqs",
 			"Rev": "c5ba9ad45b6ac022326f0ff9762d6bac33ca8f88"
+		},
+		{
+			"ImportPath": "github.com/shopify/sarama",
+			"Rev": "f503eb0f7b9756c36537436e28560e067013b59a"
 		},
 		{
 			"ImportPath": "github.com/twitchscience/aws_utils/common",

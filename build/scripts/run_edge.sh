@@ -11,5 +11,8 @@ export CROSS_DOMAIN_LOCATION="/opt/science/spade_edge/config/crossdomain.xml"
 export STATSD_HOSTPORT="localhost:8125"
 
 export GOMAXPROCS="3"
-exec ../spade_edge -log_dir /mnt -port ":80" \
+exec ../spade_edge \
+  -kafka_brokers "${KAFKA_BROKERS} \
+  -log_dir /mnt \
+  -port ":80" \
   -stat_prefix "${CLOUD_APP}.${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT}}.${EC2_REGION}.${CLOUD_AUTO_SCALE_GROUP##*-}"

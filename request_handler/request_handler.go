@@ -58,11 +58,13 @@ type SpadeHandler struct {
 type FileAuditLogger struct {
 	AuditLogger *gologging.UploadLogger
 	SpadeLogger *gologging.UploadLogger
+	KLogger     SpadeEdgeLogger
 }
 
 func (a *FileAuditLogger) Close() {
 	a.AuditLogger.Close()
 	a.SpadeLogger.Close()
+	a.KLogger.Close()
 }
 
 func (a *FileAuditLogger) Log(event *spade.Event) error {
@@ -110,6 +112,7 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 		// for example, something that maybe
 		// application/x-www-form-urlencoded but with the Content-Type
 		// header set incorrectly... best effort here on out
+
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			return http.StatusBadRequest
