@@ -5,19 +5,23 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/afex/hystrix-go/hystrix"
 	"github.com/twitchscience/aws_utils/environment"
 	"github.com/twitchscience/aws_utils/notifier"
 	"github.com/twitchscience/aws_utils/uploader"
 
 	"github.com/twitchscience/gologging/gologging"
 	gen "github.com/twitchscience/gologging/key_name_generator"
+	"github.com/twitchscience/spade_edge/k_writer"
 	"github.com/twitchscience/spade_edge/request_handler"
 
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -40,8 +44,16 @@ var (
 		":8888",
 		"Which port are we listenting on form: ':<port>' e.g. :8888",
 	)
+	brokers = flag.String("kafka_brokers", "",
+		`<host>:<port>,<host>:<port>,... of kafka brokers.
+		Can leave empty if not using`)
+	clientId   = flag.String("client_id", "", "id of this client.")
 	VERSION, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
 )
+
+func ParseBrokerList(csv string) []string {
+	return strings.Split(csv, ",")
+}
 
 type DummyNotifierHarness struct {
 }
@@ -92,21 +104,25 @@ func (s *SQSNotifierHarness) SendMessage(message *uploader.UploadReceipt) error 
 	return s.notifier.SendMessage("edge", s.qName, s.version, message.KeyName)
 }
 
-const MAX_LINES_PER_LOG = 1000000 // 1 million
-
-func main() {
-	flag.Parse()
-
-	statsdHostport := os.Getenv("STATSD_HOSTPORT")
-	var stats statsd.Statter
-	var err error
+func initStatsd(statsPrefix, statsdHostport string) (stats statsd.Statter, err error) {
 	if statsdHostport == "" {
 		stats, _ = statsd.NewNoop()
 	} else {
 		if stats, err = statsd.New(statsdHostport, *stats_prefix); err != nil {
 			log.Fatalf("Statsd configuration error: %v", err)
 		}
-		log.Printf("Connected to statsd at %s\n", statsdHostport)
+	}
+	return
+}
+
+const MAX_LINES_PER_LOG = 1000000 // 1 million
+
+func main() {
+	flag.Parse()
+
+	stats, err := initStatsd(*stats_prefix, os.Getenv("STATSD_HOSTPORT"))
+	if err != nil {
+		log.Fatalf("Statsd configuration error: %v", err)
 	}
 
 	auth, err := aws.GetAuth("", "", "", time.Now())
@@ -159,11 +175,31 @@ func main() {
 		log.Fatalf("Got Error while building logger: %s\n", err)
 	}
 
-	logger := &request_handler.FileAuditLogger{
-		AuditLogger: auditLogger,
-		SpadeLogger: spadeEventLogger,
+	// Initialize Loggers.
+	// AuditLogger writes to the audit log, for analysis of system success rate.
+	// SpadeLogger writes requests to a file for processing by the spade processor.
+	// K(afka)Logger writes produces messages for kafka, currently in dark launch.
+	// We allow the klogger to be null incase we boot up with an unresponsive kafka cluster.
+	var logger *request_handler.FileAuditLogger
+	brokerList := ParseBrokerList(*brokers)
+	klogger, err := k_writer.NewKWriter(*clientId, brokerList)
+	if err == nil {
+		klogger.(*k_writer.KWriter).Init()
+		logger = &request_handler.FileAuditLogger{
+			AuditLogger: auditLogger,
+			SpadeLogger: spadeEventLogger,
+			KLogger:     klogger,
+		}
+	} else {
+		log.Printf("Got Error while building logger: %s + %v\nUsing Nop Logger\n", err, brokerList)
+		logger = &request_handler.FileAuditLogger{
+			AuditLogger: auditLogger,
+			SpadeLogger: spadeEventLogger,
+			KLogger:     &request_handler.NoopLogger{},
+		}
 	}
 
+	// Trigger close on receipt of SIGINT
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
 		syscall.SIGINT)
@@ -173,6 +209,10 @@ func main() {
 		logger.Close()
 		os.Exit(0)
 	}()
+
+	hystrixStreamHandler := hystrix.NewStreamHandler()
+	hystrixStreamHandler.Start()
+	go http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
 
 	// setup server and listen
 	server := &http.Server{
