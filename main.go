@@ -43,7 +43,8 @@ var (
 		"Which port are we listenting on form: ':<port>' e.g. :8888",
 	)
 	brokers = flag.String("kafka_brokers", "",
-		"<addr>:<port> of kafka cluster can leave empty if not using")
+		`<host>:<port>,<host>:<port>,... of kafka brokers.
+		Can leave empty if not using`)
 	VERSION, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
 )
 
