@@ -16,7 +16,7 @@ type KWriter struct {
 	errorsOccurred int
 }
 
-func NewKWriter(brokers []string) (*KWriter, error) {
+func NewKWriter(brokers []string) (request_handler.SpadeEdgeLogger, error) {
 	c, err := sarama.NewClient("edge", brokers, sarama.NewClientConfig())
 	if err != nil {
 		return nil, err
@@ -39,11 +39,14 @@ func (l *KWriter) Listen() {
 	for {
 		select {
 		case e := <-l.Producer.Errors():
+			if e == nil {
+				continue
+			}
 			l.errorsOccurred++
 			log.Printf("Got Error while sending message: %+v\n", e)
 		case event := <-l.sendChan:
 			// Were going to use a ghetto circuit breaker (aka a fuse) until we have a real impl...
-			if l.errorsOccurred > BYPASS_THRESHOLD || l == nil {
+			if l.errorsOccurred > BYPASS_THRESHOLD {
 				continue
 			}
 			err := l.Producer.QueueMessage("edge", sarama.StringEncoder(event.GetId()), event)

@@ -172,7 +172,8 @@ func main() {
 	brokerList := ParseBrokerList(*brokers)
 	klogger, err := k_writer.NewKWriter(brokerList)
 	if err != nil {
-		log.Printf("Got Error while building logger: %s + %v\n", err, brokerList)
+		log.Printf("Got Error while building logger: %s + %v\nUsing Nop Logger\n", err, brokerList)
+		klogger = &request_handler.NopLogger{}
 	}
 
 	logger := &request_handler.FileAuditLogger{
