@@ -2,16 +2,20 @@ package k_writer
 
 import (
 	"log"
+	"time"
 
 	"github.com/shopify/sarama"
 	"github.com/twitchscience/spade_edge/request_handler"
 )
 
-const BYPASS_THRESHOLD = 15
+const (
+	BYPASS_THRESHOLD = 15
+	ERROR_BUFFER     = 100000
+)
 
 type KWriter struct {
 	Producer       *sarama.Producer
-	stop           chan bool
+	stopped        chan bool
 	sendChan       chan request_handler.EventRecord
 	errorsOccurred int
 }
@@ -21,14 +25,20 @@ func NewKWriter(brokers []string) (request_handler.SpadeEdgeLogger, error) {
 	if err != nil {
 		return nil, err
 	}
-	p, err := sarama.NewProducer(c, sarama.NewProducerConfig())
+	p, err := sarama.NewProducer(c, &sarama.ProducerConfig{
+		Partitioner:                sarama.NewRandomPartitioner(),
+		RequiredAcks:               sarama.WaitForLocal,
+		MaxBufferTime:              10 * time.Millisecond,
+		MaxBufferedBytes:           10,
+		BackPressureThresholdBytes: 50 * 1024 * 1024,
+	})
 	if err != nil {
 		return nil, err
 	}
 	k := &KWriter{
 		Producer:       p,
-		stop:           make(chan bool),
-		sendChan:       make(chan request_handler.EventRecord),
+		stopped:        make(chan bool),
+		sendChan:       make(chan request_handler.EventRecord, ERROR_BUFFER),
 		errorsOccurred: 0,
 	}
 	go k.Listen()
@@ -44,8 +54,11 @@ func (l *KWriter) Listen() {
 			}
 			l.errorsOccurred++
 			log.Printf("Got Error while sending message: %+v\n", e)
-		case event := <-l.sendChan:
+		case event, ok := <-l.sendChan:
 			// Were going to use a ghetto circuit breaker (aka a fuse) until we have a real impl...
+			if !ok {
+				break
+			}
 			if l.errorsOccurred > BYPASS_THRESHOLD {
 				continue
 			}
@@ -54,10 +67,9 @@ func (l *KWriter) Listen() {
 				l.errorsOccurred++
 				log.Printf("GotError: %v\n", err)
 			}
-		case <-l.stop:
-			return
 		}
 	}
+	l.stopped <- true
 }
 
 func (l *KWriter) Log(e request_handler.EventRecord) {
@@ -65,6 +77,8 @@ func (l *KWriter) Log(e request_handler.EventRecord) {
 }
 
 func (l *KWriter) Close() {
+	// Drain send Channel
+	close(l.sendChan)
+	<-l.stopped
 	l.Producer.Close()
-	l.stop <- true
 }

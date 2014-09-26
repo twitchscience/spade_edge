@@ -10,7 +10,7 @@ export EDGE_VERSION="1"
 export CROSS_DOMAIN_LOCATION="/opt/science/spade_edge/config/crossdomain.xml"
 export STATSD_HOSTPORT="localhost:8125"
 
-export GOMAXPROCS="3"
+export GOMAXPROCS="4"
 exec ../spade_edge \
   -kafka_brokers "${KAFKA_BROKERS}" \
   -log_dir /mnt \
