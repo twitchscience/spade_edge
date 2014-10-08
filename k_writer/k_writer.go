@@ -2,6 +2,7 @@ package k_writer
 
 import (
 	"log"
+	"sync"
 	"time"
 
 	"github.com/shopify/sarama"
@@ -15,21 +16,22 @@ const (
 
 type KWriter struct {
 	Producer       *sarama.Producer
+	Topic          string
 	stopped        chan bool
 	sendChan       chan request_handler.EventRecord
 	errorsOccurred int
 }
 
-func NewKWriter(brokers []string) (request_handler.SpadeEdgeLogger, error) {
-	c, err := sarama.NewClient("edge", brokers, sarama.NewClientConfig())
+func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLogger, error) {
+	c, err := sarama.NewClient(clientId, brokers, sarama.NewClientConfig())
 	if err != nil {
 		return nil, err
 	}
 	p, err := sarama.NewProducer(c, &sarama.ProducerConfig{
 		Partitioner:                sarama.NewRandomPartitioner(),
 		RequiredAcks:               sarama.WaitForLocal,
-		MaxBufferTime:              10 * time.Millisecond,
-		MaxBufferedBytes:           10,
+		MaxBufferTime:              50 * time.Millisecond,
+		MaxBufferedBytes:           4096,
 		BackPressureThresholdBytes: 50 * 1024 * 1024,
 	})
 	if err != nil {
@@ -37,6 +39,7 @@ func NewKWriter(brokers []string) (request_handler.SpadeEdgeLogger, error) {
 	}
 	k := &KWriter{
 		Producer:       p,
+		Topic:          "spade-edge-" + env.GetCloudEnv(),
 		stopped:        make(chan bool),
 		sendChan:       make(chan request_handler.EventRecord, ERROR_BUFFER),
 		errorsOccurred: 0,
@@ -46,6 +49,7 @@ func NewKWriter(brokers []string) (request_handler.SpadeEdgeLogger, error) {
 }
 
 func (l *KWriter) Listen() {
+	var notifyFuseBroke sync.Once
 	for {
 		select {
 		case e := <-l.Producer.Errors():
@@ -60,12 +64,15 @@ func (l *KWriter) Listen() {
 				break
 			}
 			if l.errorsOccurred > BYPASS_THRESHOLD {
+				notifyFuseBroke.Do(func() {
+					log.Println("Fuse Broke!")
+				})
 				continue
 			}
-			err := l.Producer.QueueMessage("edge", sarama.StringEncoder(event.GetId()), event)
+			err := l.Producer.QueueMessage(l.Topic, sarama.StringEncoder(event.GetId()), event)
 			if err != nil {
 				l.errorsOccurred++
-				log.Printf("GotError: %v\n", err)
+				log.Printf("Got Error: %v\n", err)
 			}
 		}
 	}

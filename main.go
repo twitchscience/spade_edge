@@ -45,6 +45,7 @@ var (
 	brokers = flag.String("kafka_brokers", "",
 		`<host>:<port>,<host>:<port>,... of kafka brokers.
 		Can leave empty if not using`)
+	clientId   = flag.String("client_id", "", "id of this client.")
 	VERSION, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
 )
 
@@ -170,7 +171,7 @@ func main() {
 
 	// We allow the klogger to be null incase we boot up with a bad kafka cluster.
 	brokerList := ParseBrokerList(*brokers)
-	klogger, err := k_writer.NewKWriter(brokerList)
+	klogger, err := k_writer.NewKWriter(*clientId, brokerList)
 	if err != nil {
 		log.Printf("Got Error while building logger: %s + %v\nUsing Nop Logger\n", err, brokerList)
 		klogger = &request_handler.NopLogger{}
