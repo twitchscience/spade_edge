@@ -11,7 +11,7 @@ PKGDIR="/tmp/pkg"
 mv ${PKGDIR}/deploy ${EDGEDIR}
 chmod +x ${EDGEDIR}/bin/*
 
-sudo apt-get update 
+sudo apt-get update
 sudo apt-get install -y dpkg
 
 curl -O http://science.twitch.tv/debs/kafka_finder_1.0.3_amd64.deb
