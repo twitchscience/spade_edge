@@ -29,7 +29,7 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 		return nil, err
 	}
 	p, err := sarama.NewProducer(c, &sarama.ProducerConfig{
-		Partitioner:                sarama.NewRoundRobinPartitioner(),
+		Partitioner:                &sarama.RoundRobinPartitioner{},
 		RequiredAcks:               sarama.WaitForLocal,
 		MaxBufferTime:              50 * time.Millisecond,
 		MaxBufferedBytes:           4096,
