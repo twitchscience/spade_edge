@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/shopify/sarama"
+	env "github.com/twitchscience/aws_utils/environment"
 	"github.com/twitchscience/spade_edge/request_handler"
 )
 
@@ -28,7 +29,7 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 		return nil, err
 	}
 	p, err := sarama.NewProducer(c, &sarama.ProducerConfig{
-		Partitioner:                sarama.NewRandomPartitioner(),
+		Partitioner:                sarama.NewRoundRobinPartitioner(),
 		RequiredAcks:               sarama.WaitForLocal,
 		MaxBufferTime:              50 * time.Millisecond,
 		MaxBufferedBytes:           4096,
