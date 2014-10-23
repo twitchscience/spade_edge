@@ -12,4 +12,5 @@ mv ${PKGDIR}/deploy ${EDGEDIR}
 chmod +x ${EDGEDIR}/bin/*
 
 # Setup upstart
+mv ${CONFDIR}/mount_ebs_volumes.conf ${UPSTARTDIR}/mount_ebs_volumes.conf
 mv ${CONFDIR}/upstart.conf ${UPSTARTDIR}/spade_edge.conf
