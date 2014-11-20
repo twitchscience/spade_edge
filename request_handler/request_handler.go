@@ -36,10 +36,14 @@ var (
 		}
 		return b
 	}()
-	xarth              []byte = []byte("XARTH")
-	xmlApplicationType        = mime.TypeByExtension(".xml")
-	DataFlag           []byte = []byte("data=")
-	isProd                    = environment.IsProd()
+	robotsResponse []byte = []byte(`user-agent: *
+disallow: /
+`)
+	xarth               []byte = []byte("XARTH")
+	xmlApplicationType         = mime.TypeByExtension(".xml")
+	DataFlag            []byte = []byte("data=")
+	isProd                     = environment.IsProd()
+	textApplicationType        = mime.TypeByExtension(".txt")
 )
 
 type SpadeEdgeLogger interface {
@@ -210,6 +214,10 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *requestContext) int {
 	var status int
 	switch r.URL.Path {
+	case "/robots.txt":
+		w.Header().Add("Content-Type", textApplicationType)
+		w.Write(robotsResponse)
+		status = http.StatusOK
 	case "/crossdomain.xml":
 		w.Header().Add("Content-Type", xmlApplicationType)
 		w.Write(xDomainContents)
