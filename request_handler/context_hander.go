@@ -48,4 +48,9 @@ func (r *requestContext) recordStats(statter statsd.Statter) {
 	for stat, duration := range r.Timers {
 		statter.Timing(prefix+"."+stat, duration.Nanoseconds(), 0.1)
 	}
+	if r.BadClient {
+		// We expect these to be infrequent. We may want to decreate this
+		// if it turns out not to be the case
+		statter.Inc("bad_client", 1, 1.0)
+	}
 }
