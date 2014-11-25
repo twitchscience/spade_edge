@@ -96,7 +96,6 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 
 	data := r.Form.Get("data")
 	if data == "" && r.Method == "POST" {
-		context.BadClient = true
 		// if we're here then our clients have POSTed us something weird,
 		// for example, something that maybe
 		// application/x-www-form-urlencoded but with the Content-Type
@@ -106,6 +105,7 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 			return http.StatusBadRequest
 		}
 		if bytes.Equal(b[:5], DataFlag) {
+			context.BadClient = true
 			b = b[5:]
 		}
 		data = string(b)
