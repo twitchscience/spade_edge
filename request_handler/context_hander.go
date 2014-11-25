@@ -26,12 +26,13 @@ func (t *timerInstance) stopTiming() (r time.Duration) {
 }
 
 type requestContext struct {
-	Now      time.Time
-	Method   string
-	IpHeader string
-	Endpoint string
-	Timers   map[string]time.Duration
-	Status   int
+	Now       time.Time
+	Method    string
+	IpHeader  string
+	Endpoint  string
+	Timers    map[string]time.Duration
+	Status    int
+	BadClient bool
 }
 
 func (r *requestContext) setStatus(s int) *requestContext {

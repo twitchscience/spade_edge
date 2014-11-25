@@ -185,7 +185,7 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Endpoint:  r.URL.Path,
 		IpHeader:  ipForwardHeader,
 		Timers:    make(map[string]time.Duration, nTimers),
-		BadClient: bool,
+		BadClient: false,
 	}
 	timer := newTimerInstance()
 	context.setStatus(s.serve(w, r, context))
