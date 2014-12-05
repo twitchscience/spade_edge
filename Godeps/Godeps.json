@@ -1,6 +1,9 @@
 {
 	"ImportPath": "github.com/twitchscience/spade_edge",
 	"GoVersion": "go1.3",
+	"Packages": [
+		"./..."
+	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
