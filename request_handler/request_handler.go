@@ -3,6 +3,7 @@ package request_handler
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -73,6 +74,10 @@ func (a *FileAuditLogger) Log(event *spade.Event) error {
 	}
 	a.SpadeLogger.Log("%s", logLine)
 	return nil
+}
+
+func auditTrail(e *spade.Event) string {
+	return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid)
 }
 
 func getIpFromHeader(headerKey string, header http.Header) net.IP {
