@@ -1,9 +1,6 @@
 {
 	"ImportPath": "github.com/twitchscience/spade_edge",
 	"GoVersion": "go1.3",
-	"Packages": [
-		"./..."
-	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
@@ -48,6 +45,10 @@
 		{
 			"ImportPath": "github.com/twitchscience/gologging/key_name_generator",
 			"Rev": "412f15b8565727874975f6b44197cdb6b5c9fa0c"
+		},
+		{
+			"ImportPath": "github.com/twitchscience/scoop_protocol/spade",
+			"Rev": "0b15d00d067fe71b2e53534f1a6d49cf6d0f8c23"
 		}
 	]
 }
