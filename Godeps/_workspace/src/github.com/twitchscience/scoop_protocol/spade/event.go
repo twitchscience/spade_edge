@@ -13,11 +13,11 @@ import (
 const PROTOCOL_VERSION = 2
 
 type Event struct {
-	ReceivedAt time.Time `json:receivedAt`
-	ClientIp   net.IP    `json:clientIp,string`
-	Uuid       string    `json:uuid`
-	Data       string    `json:data`
-	Version    int       `json:recordversion`
+	ReceivedAt time.Time `json:"receivedAt"`
+	ClientIp   net.IP    `json:"clientIp"`
+	Uuid       string    `json:"uuid"`
+	Data       string    `json:"data"`
+	Version    int       `json:"recordversion"`
 }
 
 func NewEvent(receivedAt time.Time, clientIp net.IP, uuid, data string) *Event {

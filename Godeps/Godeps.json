@@ -51,7 +51,7 @@
 		},
 		{
 			"ImportPath": "github.com/twitchscience/scoop_protocol/spade",
-			"Rev": "0b15d00d067fe71b2e53534f1a6d49cf6d0f8c23"
+			"Rev": "4baa3fcb0a790749eb0130bb15aabad66fadc1ce"
 		}
 	]
 }

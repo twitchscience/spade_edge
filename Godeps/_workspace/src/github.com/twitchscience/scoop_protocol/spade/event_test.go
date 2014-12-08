@@ -1,17 +1,29 @@
 package spade
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"log"
 	"net"
 	"testing"
 	"time"
 )
 
+func randomString(n int) string {
+	b := make([]byte, n)
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Fatal("while generating random string:", err)
+	}
+	return base64.URLEncoding.EncodeToString(b)
+}
+
 var exEvent = NewEvent(
 	time.Unix(1397768380, 0),
 	net.ParseIP("222.222.222.222"),
 	"1",
-	"blag",
+	randomString(2048),
 )
 
 // These exist to ensure that the impact of proxying the chosen
@@ -19,12 +31,13 @@ var exEvent = NewEvent(
 //
 // Current performance behaviour suggests these pose no significant
 // issue:
+
 // $ go test -bench=. github.com/twitchscience/scoop_protocol/spade
 //
-// Benchmark_Marshal        500000      4495 ns/op
-// Benchmark_Unmarshal      500000      6245 ns/op
-// Benchmark_MarshalJSON    500000      4547 ns/op
-// Benchmark_UnmarshalJSON  500000      6383 ns/op
+// Benchmark_Marshal       200000     14846 ns/op
+// Benchmark_Unmarshal      50000     47529 ns/op
+// Benchmark_MarshalJSON   200000     14743 ns/op
+// Benchmark_UnmarshalJSON  50000     47391 ns/op
 
 var byteHolder []byte
 var eventHolder Event
