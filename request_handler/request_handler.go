@@ -200,12 +200,12 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 	case "/crossdomain.xml":
 		w.Header().Add("Content-Type", xmlApplicationType)
 		w.Write(xDomainContents)
-		status = http.StatusOK
+		return http.StatusOK
 	case "/healthcheck":
 		status = http.StatusOK
 	case "/xarth":
 		w.Write(xarth)
-		status = http.StatusOK
+		return http.StatusOK
 	// Accepted tracking endpoints.
 	case "/":
 		status = s.HandleSpadeRequests(r, context)
