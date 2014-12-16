@@ -182,7 +182,7 @@ func main() {
 			EdgeLogger: logger,
 			Assigner:   request_handler.Assigner,
 		},
-		ReadTimeout:    10 * time.Second,
+		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 0.5MB
 	}
