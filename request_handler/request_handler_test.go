@@ -98,7 +98,7 @@ func TestEndPoints(t *testing.T) {
 
 	var expectedEvents []spade.Event
 	fixedIP := net.ParseIP("222.222.222.222")
-	fixedTime, _ := time.Parse(time.RFC3339, "2014-05-02T14:34:01-05:00")
+	fixedTime, _ := time.Parse(time.RFC3339, "2014-05-02T19:34:01+00:00")
 
 	uuidCounter := 1
 
@@ -127,7 +127,7 @@ func TestEndPoints(t *testing.T) {
 
 		if tt.Expectation != "" {
 			expectedEvents = append(expectedEvents, spade.Event{
-				ReceivedAt: fixedTime,
+				ReceivedAt: fixedTime.UTC(),
 				ClientIp:   fixedIP,
 				Uuid:       fmt.Sprintf("%d", uuidCounter),
 				Data:       tt.Expectation,

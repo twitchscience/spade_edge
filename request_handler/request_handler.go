@@ -161,11 +161,11 @@ func getTimeStampFromHeader(r *http.Request) (time.Time, error) {
 		if splitIdx > -1 {
 			secs, err := strconv.ParseInt(timeStamp[:splitIdx], 10, 64)
 			if err == nil {
-				return time.Unix(secs, 0), nil
+				return time.Unix(secs, 0).UTC(), nil
 			}
 		}
 	}
-	return time.Time{}, errors.New("could not process timestamp from header")
+	return time.Time{}.UTC(), errors.New("could not process timestamp from header")
 }
 
 var allowedMethods = map[string]bool{
@@ -178,7 +178,7 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	var ts time.Time
 	var err error
 	ts = now
