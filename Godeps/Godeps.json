@@ -48,6 +48,10 @@
 		{
 			"ImportPath": "github.com/twitchscience/gologging/key_name_generator",
 			"Rev": "412f15b8565727874975f6b44197cdb6b5c9fa0c"
+		},
+		{
+			"ImportPath": "github.com/twitchscience/scoop_protocol/spade",
+			"Rev": "4baa3fcb0a790749eb0130bb15aabad66fadc1ce"
 		}
 	]
 }
