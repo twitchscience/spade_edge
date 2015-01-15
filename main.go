@@ -102,21 +102,25 @@ func (s *SQSNotifierHarness) SendMessage(message *uploader.UploadReceipt) error 
 	return s.notifier.SendMessage("edge", s.qName, s.version, message.KeyName)
 }
 
-const MAX_LINES_PER_LOG = 1000000 // 1 million
-
-func main() {
-	flag.Parse()
-
-	statsdHostport := os.Getenv("STATSD_HOSTPORT")
-	var stats statsd.Statter
-	var err error
+func initStatsd(statsPrefix, statsdHostPort string) (stats statsd.Statter, err error) {
 	if statsdHostport == "" {
 		stats, _ = statsd.NewNoop()
 	} else {
 		if stats, err = statsd.New(statsdHostport, *stats_prefix); err != nil {
 			log.Fatalf("Statsd configuration error: %v", err)
 		}
-		log.Printf("Connected to statsd at %s\n", statsdHostport)
+	}
+
+}
+
+const MAX_LINES_PER_LOG = 1000000 // 1 million
+
+func main() {
+	flag.Parse()
+
+	stats, err := initStatsd(*stats_prefix, os.Getenv("STATSD_HOSTPORT"))
+	if err != nil {
+		log.Fatalf("Statsd configuration error: %v", err)
 	}
 
 	auth, err := aws.GetAuth("", "", "", time.Now())
@@ -169,24 +173,30 @@ func main() {
 		log.Fatalf("Got Error while building logger: %s\n", err)
 	}
 
-	// We allow the klogger to be null incase we boot up with a bad kafka cluster.
+	// Initialize Loggers.
+	// AuditLogger writes to the audit log, for analysis of system success rate.
+	// SpadeLogger writes requests to a file for processing by the spade processor.
+	// K(afka)Logger writes produces messages for kafka, currently in dark launch.
+	// We allow the klogger to be null incase we boot up with an unresponsive kafka cluster.
 	var logger *request_handler.FileAuditLogger
 	brokerList := ParseBrokerList(*brokers)
 	klogger, err := k_writer.NewKWriter(*clientId, brokerList)
-	if err != nil {
-		log.Printf("Got Error while building logger: %s + %v\nUsing Nop Logger\n", err, brokerList)
+	if err == nil {
+		go klogger.Listen()
 		logger = &request_handler.FileAuditLogger{
 			AuditLogger: auditLogger,
 			SpadeLogger: spadeEventLogger,
 			KLogger:     klogger,
 		}
 	} else {
+		log.Printf("Got Error while building logger: %s + %v\nUsing Nop Logger\n", err, brokerList)
 		logger = &request_handler.FileAuditLogger{
 			AuditLogger: auditLogger,
 			SpadeLogger: spadeEventLogger,
 		}
 	}
 
+	// Trigger close on receipt of SIGINT
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc,
 		syscall.SIGINT)
