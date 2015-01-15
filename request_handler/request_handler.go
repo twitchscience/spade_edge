@@ -49,11 +49,6 @@ type SpadeEdgeLogger interface {
 	Close()
 }
 
-type NopLogger struct{}
-
-func (n *NopLogger) Log(e EventRecord) {}
-func (n *NopLogger) Close()            {}
-
 type SpadeHandler struct {
 	StatLogger statsd.Statter
 	EdgeLogger SpadeEdgeLogger

@@ -7,6 +7,7 @@ import (
 
 	"github.com/shopify/sarama"
 	env "github.com/twitchscience/aws_utils/environment"
+	"github.com/twitchscience/scoop_protocol/spade"
 	"github.com/twitchscience/spade_edge/request_handler"
 )
 
@@ -19,7 +20,7 @@ type KWriter struct {
 	Producer       *sarama.Producer
 	Topic          string
 	stopped        chan bool
-	sendChan       chan request_handler.EventRecord
+	sendChan       chan *spade.Event
 	errorsOccurred int
 }
 
@@ -29,11 +30,10 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 		return nil, err
 	}
 	p, err := sarama.NewProducer(c, &sarama.ProducerConfig{
-		Partitioner:                &sarama.RoundRobinPartitioner{},
-		RequiredAcks:               sarama.WaitForLocal,
-		MaxBufferTime:              50 * time.Millisecond,
-		MaxBufferedBytes:           4096,
-		BackPressureThresholdBytes: 50 * 1024 * 1024,
+		Partitioner:    sarama.NewRoundRobinPartitioner,
+		RequiredAcks:   sarama.WaitForLocal,
+		FlushFrequency: 50 * time.Millisecond,
+		FlushByteCount: 4096,
 	})
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 		Producer:       p,
 		Topic:          "spade-edge-" + env.GetCloudEnv(),
 		stopped:        make(chan bool),
-		sendChan:       make(chan request_handler.EventRecord, ERROR_BUFFER),
+		sendChan:       make(chan *spade.Event, ERROR_BUFFER),
 		errorsOccurred: 0,
 	}
 	go k.Listen()
@@ -70,7 +70,16 @@ func (l *KWriter) Listen() {
 				})
 				continue
 			}
-			err := l.Producer.QueueMessage(l.Topic, sarama.StringEncoder(event.GetId()), event)
+			c, err := spade.Marshal(event)
+			if err != nil {
+				l.errorsOccurred++
+				log.Printf("Got Error: %v\n", err)
+			}
+			l.Producer.Input() <- &sarama.MessageToSend{
+				Topic: l.Topic,
+				Key:   sarama.StringEncoder(event.Uuid),
+				Value: sarama.ByteEncoder(c),
+			}
 			if err != nil {
 				l.errorsOccurred++
 				log.Printf("Got Error: %v\n", err)
@@ -80,8 +89,9 @@ func (l *KWriter) Listen() {
 	l.stopped <- true
 }
 
-func (l *KWriter) Log(e request_handler.EventRecord) {
+func (l *KWriter) Log(e *spade.Event) error {
 	l.sendChan <- e
+	return nil
 }
 
 func (l *KWriter) Close() {

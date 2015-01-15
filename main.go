@@ -170,17 +170,21 @@ func main() {
 	}
 
 	// We allow the klogger to be null incase we boot up with a bad kafka cluster.
+	var logger *request_handler.FileAuditLogger
 	brokerList := ParseBrokerList(*brokers)
 	klogger, err := k_writer.NewKWriter(*clientId, brokerList)
 	if err != nil {
 		log.Printf("Got Error while building logger: %s + %v\nUsing Nop Logger\n", err, brokerList)
-		klogger = &request_handler.NopLogger{}
-	}
-
-	logger := &request_handler.FileAuditLogger{
-		AuditLogger: auditLogger,
-		SpadeLogger: spadeEventLogger,
-		KLogger:     klogger,
+		logger = &request_handler.FileAuditLogger{
+			AuditLogger: auditLogger,
+			SpadeLogger: spadeEventLogger,
+			KLogger:     klogger,
+		}
+	} else {
+		logger = &request_handler.FileAuditLogger{
+			AuditLogger: auditLogger,
+			SpadeLogger: spadeEventLogger,
+		}
 	}
 
 	sigc := make(chan os.Signal, 1)
