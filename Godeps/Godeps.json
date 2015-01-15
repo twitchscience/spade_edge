@@ -11,6 +11,10 @@
 			"Rev": "12e4b4183793ac4b061921e7980845e750679fd0"
 		},
 		{
+			"ImportPath": "github.com/afex/hystrix-go/hystrix",
+			"Rev": "c10f01d1ef299b159da65926f88ab53d4b55647e"
+		},
+		{
 			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
 			"Rev": "3999011ef0451eb805b0fa31f98cfb9261bd71be"
 		},
@@ -25,6 +29,10 @@
 		{
 			"ImportPath": "github.com/crowdmob/goamz/sqs",
 			"Rev": "c5ba9ad45b6ac022326f0ff9762d6bac33ca8f88"
+		},
+		{
+			"ImportPath": "github.com/eapache/go-resiliency/breaker",
+			"Rev": "779a811c89f2d4ca7c2cd7efe1cd350027b407bf"
 		},
 		{
 			"ImportPath": "github.com/shopify/sarama",
