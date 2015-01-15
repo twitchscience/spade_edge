@@ -45,7 +45,6 @@ var (
 )
 
 type SpadeEdgeLogger interface {
-	Init()
 	Log(event *spade.Event) error
 	Close()
 }
@@ -53,7 +52,6 @@ type SpadeEdgeLogger interface {
 type NoopLogger struct{}
 
 func (n *NoopLogger) Log(e *spade.Event) error { return nil }
-func (n *NoopLogger) Init()                    {}
 func (n *NoopLogger) Close()                   {}
 
 type SpadeHandler struct {

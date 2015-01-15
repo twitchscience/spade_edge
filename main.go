@@ -182,7 +182,7 @@ func main() {
 	brokerList := ParseBrokerList(*brokers)
 	klogger, err := k_writer.NewKWriter(*clientId, brokerList)
 	if err == nil {
-		klogger.Init()
+		klogger.(*k_writer.KWriter).Init()
 		logger = &request_handler.FileAuditLogger{
 			AuditLogger: auditLogger,
 			SpadeLogger: spadeEventLogger,
