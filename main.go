@@ -102,7 +102,7 @@ func (s *SQSNotifierHarness) SendMessage(message *uploader.UploadReceipt) error 
 	return s.notifier.SendMessage("edge", s.qName, s.version, message.KeyName)
 }
 
-func initStatsd(statsPrefix, statsdHostPort string) (stats statsd.Statter, err error) {
+func initStatsd(statsPrefix, statsdHostport string) (stats statsd.Statter, err error) {
 	if statsdHostport == "" {
 		stats, _ = statsd.NewNoop()
 	} else {
@@ -110,7 +110,7 @@ func initStatsd(statsPrefix, statsdHostPort string) (stats statsd.Statter, err e
 			log.Fatalf("Statsd configuration error: %v", err)
 		}
 	}
-
+	return
 }
 
 const MAX_LINES_PER_LOG = 1000000 // 1 million
@@ -182,7 +182,7 @@ func main() {
 	brokerList := ParseBrokerList(*brokers)
 	klogger, err := k_writer.NewKWriter(*clientId, brokerList)
 	if err == nil {
-		go klogger.Listen()
+		klogger.Init()
 		logger = &request_handler.FileAuditLogger{
 			AuditLogger: auditLogger,
 			SpadeLogger: spadeEventLogger,
@@ -193,6 +193,7 @@ func main() {
 		logger = &request_handler.FileAuditLogger{
 			AuditLogger: auditLogger,
 			SpadeLogger: spadeEventLogger,
+			KLogger:     &request_handler.NoopLogger{},
 		}
 	}
 

@@ -45,9 +45,16 @@ var (
 )
 
 type SpadeEdgeLogger interface {
+	Init()
 	Log(event *spade.Event) error
 	Close()
 }
+
+type NoopLogger struct{}
+
+func (n *NoopLogger) Log(e *spade.Event) error { return nil }
+func (n *NoopLogger) Init()                    {}
+func (n *NoopLogger) Close()                   {}
 
 type SpadeHandler struct {
 	StatLogger statsd.Statter
@@ -60,6 +67,8 @@ type FileAuditLogger struct {
 	SpadeLogger *gologging.UploadLogger
 	KLogger     SpadeEdgeLogger
 }
+
+func (a *FileAuditLogger) Init() {}
 
 func (a *FileAuditLogger) Close() {
 	a.AuditLogger.Close()
@@ -75,6 +84,7 @@ func (a *FileAuditLogger) Log(event *spade.Event) error {
 		return err
 	}
 	a.SpadeLogger.Log("%s", logLine)
+	a.KLogger.Log(event)
 	return nil
 }
 

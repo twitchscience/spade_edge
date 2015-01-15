@@ -1,6 +1,8 @@
 package k_writer
 
 import (
+	"time"
+
 	"github.com/shopify/sarama"
 	env "github.com/twitchscience/aws_utils/environment"
 	"github.com/twitchscience/scoop_protocol/spade"
@@ -14,11 +16,15 @@ const (
 )
 
 type KWriter struct {
-	Producer *sarama.SimpleProducer
+	Producer *Producer
 }
 
 func GetTopic() string {
 	return "spade-edge-" + env.GetCloudEnv()
+}
+
+func (l *KWriter) Init() {
+	go l.Producer.MatchResponses()
 }
 
 func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLogger, error) {
@@ -27,7 +33,14 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 		return nil, err
 	}
 
-	p, err := sarama.NewSimpleProducer(c, GetTopic(), sarama.NewRoundRobinPartitioner)
+	config := sarama.NewProducerConfig()
+	config.Partitioner = sarama.NewRoundRobinPartitioner
+	config.FlushFrequency = 200 * time.Millisecond
+	config.FlushMsgCount = 100
+	// Might want to try out compression
+	config.Compression = sarama.CompressionNone
+
+	p, err := NewProducer(c, GetTopic(), config)
 	if err != nil {
 		return nil, err
 	}
@@ -39,13 +52,14 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 }
 
 func (l *KWriter) Log(e *spade.Event) error {
-	c, err := spade.Marshal(event)
+	c, err := spade.Marshal(e)
 	if err != nil {
 		return err
 	}
 	hystrix.Go(HystrixCommandName, func() error {
 		return l.Producer.SendMessage(sarama.StringEncoder(e.Uuid), sarama.ByteEncoder(c))
 	}, nil)
+	return nil
 }
 
 func (l *KWriter) Close() {
