@@ -12,9 +12,6 @@ var OutOfBrokers = errors.New("kafka: Client has run out of available brokers to
 // ClosedClient is the error returned when a method is called on a client that has been closed.
 var ClosedClient = errors.New("kafka: Tried to use a client that was closed.")
 
-// NoSuchTopic is the error returned when the supplied topic is rejected by the Kafka servers.
-var NoSuchTopic = errors.New("kafka: Topic not recognized by brokers.")
-
 // IncompleteResponse is the error returned when the server returns a syntactically valid response, but it does
 // not contain the expected information.
 var IncompleteResponse = errors.New("kafka: Response did not contain all the expected topic/partition blocks.")
@@ -38,6 +35,9 @@ var EncodingError = errors.New("kafka: Error while encoding packet.")
 // of the message set.
 var InsufficientData = errors.New("kafka: Insufficient data to decode packet, more bytes expected.")
 
+// ShuttingDown is returned when a producer receives a message during shutdown.
+var ShuttingDown = errors.New("kafka: Message received by producer in process of shutting down.")
+
 // DecodingError is returned when there was an error (other than truncated data) decoding the Kafka broker's response.
 // This can be a bad CRC or length field, or any other invalid value.
 type DecodingError struct {
@@ -57,20 +57,6 @@ type ConfigurationError string
 
 func (err ConfigurationError) Error() string {
 	return "kafka: Invalid Configuration: " + string(err)
-}
-
-// DroppedMessagesError is returned from a producer when messages weren't able to be successfully delivered to a broker.
-type DroppedMessagesError struct {
-	DroppedMessages int
-	Err             error
-}
-
-func (err DroppedMessagesError) Error() string {
-	if err.Err != nil {
-		return fmt.Sprintf("kafka: Dropped %d messages: %s", err.DroppedMessages, err.Err.Error())
-	} else {
-		return fmt.Sprintf("kafka: Dropped %d messages", err.DroppedMessages)
-	}
 }
 
 // KError is the type of error that can be returned directly by the Kafka broker.

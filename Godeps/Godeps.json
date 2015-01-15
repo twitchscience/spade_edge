@@ -28,7 +28,7 @@
 		},
 		{
 			"ImportPath": "github.com/shopify/sarama",
-			"Rev": "f503eb0f7b9756c36537436e28560e067013b59a"
+			"Rev": "950d619a1a4b311a8b55bee5bd3a49c6cb82fdec"
 		},
 		{
 			"ImportPath": "github.com/twitchscience/aws_utils/common",
