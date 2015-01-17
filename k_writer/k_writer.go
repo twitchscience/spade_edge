@@ -1,6 +1,7 @@
 package k_writer
 
 import (
+	"log"
 	"time"
 
 	"github.com/shopify/sarama"
@@ -12,7 +13,8 @@ import (
 )
 
 const (
-	HystrixCommandName = "KafkaEdgeLog"
+	HystrixCommandName      = "KafkaEdgeLog"
+	hystrixConcurrencyLevel = 5000
 )
 
 type KWriter struct {
@@ -35,8 +37,8 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 
 	config := sarama.NewProducerConfig()
 	config.Partitioner = sarama.NewRoundRobinPartitioner
-	config.FlushFrequency = 200 * time.Millisecond
-	config.FlushMsgCount = 100
+	config.FlushFrequency = 500 * time.Millisecond
+	config.FlushMsgCount = 1000
 	// Might want to try out compression
 	config.Compression = sarama.CompressionNone
 
@@ -48,6 +50,7 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 	k := &KWriter{
 		Producer: p,
 	}
+	hystrix.SetConcurrency(HystrixCommandName, hystrixConcurrencyLevel)
 	return k, nil
 }
 
@@ -58,7 +61,10 @@ func (l *KWriter) Log(e *spade.Event) error {
 	}
 	hystrix.Go(HystrixCommandName, func() error {
 		return l.Producer.SendMessage(sarama.StringEncoder(e.Uuid), sarama.ByteEncoder(c))
-	}, nil)
+	}, func(err error) error {
+		log.Printf("Got Error while sending to kafka: %s\n", err)
+		return nil
+	})
 	return nil
 }
 
