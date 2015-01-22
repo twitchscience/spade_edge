@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/afex/hystrix-go/hystrix"
 	"github.com/twitchscience/aws_utils/environment"
 	"github.com/twitchscience/aws_utils/notifier"
 	"github.com/twitchscience/aws_utils/uploader"
@@ -15,6 +16,7 @@ import (
 	"github.com/twitchscience/spade_edge/request_handler"
 
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -207,6 +209,10 @@ func main() {
 		logger.Close()
 		os.Exit(0)
 	}()
+
+	hystrixStreamHandler := hystrix.NewStreamHandler()
+	hystrixStreamHandler.Start()
+	go http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
 
 	// setup server and listen
 	server := &http.Server{
