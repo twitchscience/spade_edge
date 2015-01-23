@@ -1,7 +1,6 @@
 package k_writer
 
 import (
-	"log"
 	"time"
 
 	"github.com/shopify/sarama"
@@ -61,10 +60,7 @@ func (l *KWriter) Log(e *spade.Event) error {
 	}
 	hystrix.Go(HystrixCommandName, func() error {
 		return l.Producer.SendMessage(sarama.StringEncoder(e.Uuid), sarama.ByteEncoder(c))
-	}, func(err error) error {
-		log.Printf("Got Error while sending to kafka: %s\n", err)
-		return nil
-	})
+	}, nil)
 	return nil
 }
 
