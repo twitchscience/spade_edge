@@ -13,27 +13,29 @@ type ExecutionMetric struct {
 }
 
 type Metrics struct {
+	Name    string
 	Updates chan *ExecutionMetric
 	Mutex   *sync.RWMutex
 
-	Requests *RollingNumber
-	Errors   *RollingNumber
+	numRequests *rollingNumber
+	Errors      *rollingNumber
 
-	Successes     *RollingNumber
-	Failures      *RollingNumber
-	Rejected      *RollingNumber
-	ShortCircuits *RollingNumber
-	Timeouts      *RollingNumber
+	Successes     *rollingNumber
+	Failures      *rollingNumber
+	Rejected      *rollingNumber
+	ShortCircuits *rollingNumber
+	Timeouts      *rollingNumber
 
-	FallbackSuccesses *RollingNumber
-	FallbackFailures  *RollingNumber
+	FallbackSuccesses *rollingNumber
+	FallbackFailures  *rollingNumber
 
-	TotalDuration *RollingTiming
-	RunDuration   *RollingTiming
+	TotalDuration *rollingTiming
+	RunDuration   *rollingTiming
 }
 
-func NewMetrics() *Metrics {
+func NewMetrics(name string) *Metrics {
 	m := &Metrics{}
+	m.Name = name
 
 	m.Updates = make(chan *ExecutionMetric)
 	m.Mutex = &sync.RWMutex{}
@@ -52,7 +54,7 @@ func (m *Metrics) Monitor() {
 		m.Mutex.RLock()
 
 		// combined metrics
-		m.Requests.Increment()
+		m.numRequests.Increment()
 		if update.Type != "success" {
 			m.Errors.Increment()
 		}
@@ -93,38 +95,44 @@ func (m *Metrics) Reset() {
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()
 
-	m.Requests = NewRollingNumber()
-	m.Errors = NewRollingNumber()
+	m.numRequests = newRollingNumber()
+	m.Errors = newRollingNumber()
 
-	m.Successes = NewRollingNumber()
-	m.Rejected = NewRollingNumber()
-	m.ShortCircuits = NewRollingNumber()
-	m.Failures = NewRollingNumber()
-	m.Timeouts = NewRollingNumber()
+	m.Successes = newRollingNumber()
+	m.Rejected = newRollingNumber()
+	m.ShortCircuits = newRollingNumber()
+	m.Failures = newRollingNumber()
+	m.Timeouts = newRollingNumber()
 
-	m.FallbackSuccesses = NewRollingNumber()
-	m.FallbackFailures = NewRollingNumber()
+	m.FallbackSuccesses = newRollingNumber()
+	m.FallbackFailures = newRollingNumber()
 
-	m.TotalDuration = NewRollingTiming()
-	m.RunDuration = NewRollingTiming()
+	m.TotalDuration = newRollingTiming()
+	m.RunDuration = newRollingTiming()
 }
 
-func (m *Metrics) ErrorPercent(now time.Time) float64 {
+func (m *Metrics) Requests() *rollingNumber {
+	m.Mutex.RLock()
+	defer m.Mutex.RUnlock()
+
+	return m.numRequests
+}
+
+func (m *Metrics) ErrorPercent(now time.Time) int {
 	m.Mutex.RLock()
 	defer m.Mutex.RUnlock()
 
 	var errPct float64
-	reqs := m.Requests.Sum(now)
+	reqs := m.Requests().Sum(now)
 	errs := m.Errors.Sum(now)
 
 	if reqs > 0 {
-		errPct = float64(errs) / float64(reqs)
+		errPct = (float64(errs) / float64(reqs)) * 100
 	}
 
-	return errPct
+	return int(errPct + 0.5)
 }
 
 func (m *Metrics) IsHealthy(now time.Time) bool {
-	// TODO: configurable error percent threshold
-	return m.ErrorPercent(now) < 0.50
+	return m.ErrorPercent(now) < GetErrorPercentThreshold(m.Name)
 }

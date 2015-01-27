@@ -12,7 +12,7 @@
 		},
 		{
 			"ImportPath": "github.com/afex/hystrix-go/hystrix",
-			"Rev": "5653c1622ddade11b3238e3cc62fb122508b0aac"
+			"Rev": "71c7af1ae77ec245cce210e607930debd96752c7"
 		},
 		{
 			"ImportPath": "github.com/cactus/go-statsd-client/statsd",

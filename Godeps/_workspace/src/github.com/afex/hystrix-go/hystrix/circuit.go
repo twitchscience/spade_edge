@@ -1,6 +1,7 @@
 package hystrix
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -10,11 +11,13 @@ import (
 // should be attempted, or rejected if the Health of the circuit is too low.
 type CircuitBreaker struct {
 	Name                   string
-	Metrics                *Metrics
 	Open                   bool
 	ForceOpen              bool
 	Mutex                  *sync.RWMutex
 	OpenedOrLastTestedTime int64
+
+	ExecutorPool *ExecutorPool
+	Metrics      *Metrics
 }
 
 var (
@@ -27,8 +30,8 @@ func init() {
 	circuitBreakers = make(map[string]*CircuitBreaker)
 }
 
-// GetCircuit returns the circuit for the given command
-func GetCircuit(name string) (*CircuitBreaker, error) {
+// GetCircuit returns the circuit for the given command and whether this call created it.
+func GetCircuit(name string) (*CircuitBreaker, bool, error) {
 	circuitBreakersMutex.RLock()
 	_, ok := circuitBreakers[name]
 	if !ok {
@@ -40,13 +43,23 @@ func GetCircuit(name string) (*CircuitBreaker, error) {
 		defer circuitBreakersMutex.RUnlock()
 	}
 
-	return circuitBreakers[name], nil
+	return circuitBreakers[name], !ok, nil
+}
+
+func FlushMetrics() {
+	circuitBreakersMutex.Lock()
+	defer circuitBreakersMutex.Unlock()
+
+	for name, cb := range circuitBreakers {
+		cb.Metrics.Reset()
+		delete(circuitBreakers, name)
+	}
 }
 
 // ForceCircuitOpen allows manually causing the fallback logic for all instances
 // of a given command.
 func ForceCircuitOpen(name string, toggle bool) error {
-	circuit, err := GetCircuit(name)
+	circuit, _, err := GetCircuit(name)
 	if err != nil {
 		return err
 	}
@@ -59,7 +72,8 @@ func ForceCircuitOpen(name string, toggle bool) error {
 func NewCircuitBreaker(name string) *CircuitBreaker {
 	c := &CircuitBreaker{}
 	c.Name = name
-	c.Metrics = NewMetrics()
+	c.Metrics = NewMetrics(name)
+	c.ExecutorPool = NewExecutorPool(name)
 	c.Mutex = &sync.RWMutex{}
 
 	return c
@@ -76,8 +90,7 @@ func (circuit *CircuitBreaker) IsOpen() bool {
 		return true
 	}
 
-	// TODO: configurable request volume threshold
-	if circuit.Metrics.Requests.Sum(time.Now()) < 20 {
+	if circuit.Metrics.Requests().Sum(time.Now()) < GetRequestVolumeThreshold(circuit.Name) {
 		return false
 	}
 
@@ -99,9 +112,12 @@ func (circuit *CircuitBreaker) allowSingleTest() bool {
 	defer circuit.Mutex.RUnlock()
 
 	now := time.Now().UnixNano()
-	// TODO: configurable sleep window
-	if circuit.Open && now > circuit.OpenedOrLastTestedTime+time.Duration(5*time.Second).Nanoseconds() {
-		return atomic.CompareAndSwapInt64(&circuit.OpenedOrLastTestedTime, circuit.OpenedOrLastTestedTime, now)
+	if circuit.Open && now > circuit.OpenedOrLastTestedTime+GetSleepWindow(circuit.Name).Nanoseconds() {
+		swapped := atomic.CompareAndSwapInt64(&circuit.OpenedOrLastTestedTime, circuit.OpenedOrLastTestedTime, now)
+		if swapped {
+			log.Printf("hystrix-go: allowing single test to possibly close circuit %v", circuit.Name)
+		}
+		return swapped
 	}
 
 	return false
@@ -111,6 +127,8 @@ func (circuit *CircuitBreaker) SetOpen() {
 	circuit.Mutex.Lock()
 	defer circuit.Mutex.Unlock()
 
+	log.Printf("hystrix-go: opening circuit %v", circuit.Name)
+
 	circuit.OpenedOrLastTestedTime = time.Now().UnixNano()
 	circuit.Open = true
 }
@@ -119,6 +137,25 @@ func (circuit *CircuitBreaker) SetClose() {
 	circuit.Mutex.Lock()
 	defer circuit.Mutex.Unlock()
 
+	log.Printf("hystrix-go: closing circuit %v", circuit.Name)
+
 	circuit.Open = false
 	circuit.Metrics.Reset()
+}
+
+func (circuit *CircuitBreaker) ReportEvent(eventType string, start time.Time, runDuration time.Duration) error {
+	if eventType == "success" && circuit.IsOpen() {
+		circuit.SetClose()
+	}
+
+	totalDuration := time.Now().Sub(start)
+
+	circuit.Metrics.Updates <- &ExecutionMetric{
+		Type:          eventType,
+		Time:          time.Now(),
+		RunDuration:   runDuration,
+		TotalDuration: totalDuration,
+	}
+
+	return nil
 }

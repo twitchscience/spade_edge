@@ -9,6 +9,7 @@ package hystrix
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,11 @@ type fallbackFunc func(error) error
 //
 // Define a fallback function if you want to define some code to execute during outages.
 func Go(name string, run runFunc, fallback fallbackFunc) chan error {
+	stop := false
+	stopMutex := &sync.Mutex{}
+	var ticket *struct{}
+	ticketMutex := &sync.Mutex{}
+
 	start := time.Now()
 
 	errChan := make(chan error, 1)
@@ -30,7 +36,7 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 	// let data come in and out naturally, like with any closure
 	// explicit error return to give place for us to kill switch the operation (fallback)
 
-	circuit, err := GetCircuit(name)
+	circuit, _, err := GetCircuit(name)
 	if err != nil {
 		errChan <- err
 		return errChan
@@ -39,17 +45,11 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 	go func() {
 		defer func() { finished <- true }()
 
-		tickets, err := ConcurrentThrottle(name)
-		if err != nil {
-			errChan <- err
-			return
-		}
-
 		// Circuits get opened when recent executions have shown to have a high error rate.
 		// Rejecting new executions allows backends to recover, and the circuit will allow
 		// new traffic when it feels a healthly state has returned.
 		if !circuit.AllowRequest() {
-			reportEvent(circuit, "short-circuit", start, 0)
+			circuit.ReportEvent("short-circuit", start, 0)
 			err := tryFallback(circuit, start, 0, fallback, errors.New("circuit open"))
 			if err != nil {
 				errChan <- err
@@ -62,38 +62,55 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 		// When requests slow down but the incoming rate of requests stays the same, you have to
 		// run more at a time to keep up. By controlling concurrency during these situations, you can
 		// shed load which accumulates due to the increasing ratio of active commands to incoming requests.
+		ticketMutex.Lock()
 		select {
-		case ticket := <-tickets:
-			defer func() { tickets <- ticket }()
+		case ticket = <-circuit.ExecutorPool.Tickets:
+			ticketMutex.Unlock()
 		default:
-			reportEvent(circuit, "rejected", start, 0)
+			ticketMutex.Unlock()
+			circuit.ReportEvent("rejected", start, 0)
 			err := tryFallback(circuit, start, 0, fallback, errors.New("max concurrency"))
 			if err != nil {
 				errChan <- err
-				return
 			}
+			return
 		}
 
 		runStart := time.Now()
 		runErr := run()
 		runDuration := time.Now().Sub(runStart)
 		if runErr != nil {
-			reportEvent(circuit, "failure", start, runDuration)
-			if fallback != nil {
-				err := tryFallback(circuit, start, runDuration, fallback, runErr)
-				if err != nil {
+			circuit.ReportEvent("failure", start, runDuration)
+			err := tryFallback(circuit, start, runDuration, fallback, runErr)
+			if err != nil {
+				stopMutex.Lock()
+				defer stopMutex.Unlock()
+				if !stop {
 					errChan <- err
 				}
-			} else {
-				errChan <- runErr
+				return
 			}
 		}
 
-		reportEvent(circuit, "success", start, runDuration)
+		stopMutex.Lock()
+		defer stopMutex.Unlock()
+		if !stop {
+			circuit.ReportEvent("success", start, runDuration)
+		}
 	}()
 
 	go func() {
-		defer close(errChan)
+		defer func() {
+			stopMutex.Lock()
+			stop = true
+			stopMutex.Unlock()
+
+			ticketMutex.Lock()
+			circuit.ExecutorPool.Return(ticket)
+			ticketMutex.Unlock()
+
+			close(errChan)
+		}()
 
 		timer := time.NewTimer(GetTimeout(name))
 		defer timer.Stop()
@@ -101,7 +118,7 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 		select {
 		case <-finished:
 		case <-timer.C:
-			reportEvent(circuit, "timeout", start, 0)
+			circuit.ReportEvent("timeout", start, 0)
 
 			err := tryFallback(circuit, start, 0, fallback, errors.New("timeout"))
 			if err != nil {
@@ -121,28 +138,11 @@ func tryFallback(circuit *CircuitBreaker, start time.Time, runDuration time.Dura
 
 	fallbackErr := fallback(err)
 	if fallbackErr != nil {
-		reportEvent(circuit, "fallback-failure", start, runDuration)
+		circuit.ReportEvent("fallback-failure", start, runDuration)
 		return fmt.Errorf("fallback failed with '%v'. run error was '%v'", fallbackErr, err)
 	}
 
-	reportEvent(circuit, "fallback-success", start, runDuration)
-
-	return nil
-}
-
-func reportEvent(circuit *CircuitBreaker, eventType string, start time.Time, runDuration time.Duration) error {
-	if eventType == "success" && circuit.IsOpen() {
-		circuit.SetClose()
-	}
-
-	totalDuration := time.Now().Sub(start)
-
-	circuit.Metrics.Updates <- &ExecutionMetric{
-		Type:          eventType,
-		Time:          time.Now(),
-		RunDuration:   runDuration,
-		TotalDuration: totalDuration,
-	}
+	circuit.ReportEvent("fallback-success", start, runDuration)
 
 	return nil
 }
