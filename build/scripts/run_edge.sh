@@ -5,7 +5,8 @@ cd -- "$(dirname -- "$0")"
 
 eval "$(curl 169.254.169.254/latest/user-data/)"
 
-KAFKA_BROKERS="$(/usr/bin/kafkafinder --mode "kafka" --s3bucket "twitch-exhibitor" --exhibitorconfig "zk-exhibitor.conf")"
+KAFKA_CHROOT="/kafka/${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT}}"
+KAFKA_BROKERS="$(/usr/bin/kafkafinder --mode "kafka" --s3bucket "twitch-exhibitor" --exhibitorconfig "zk-exhibitor.conf" --kchroot ${KAFKA_CHROOT})"
 
 export HOST="$(curl 169.254.169.254/latest/meta-data/hostname)"
 export EDGE_VERSION="1"
