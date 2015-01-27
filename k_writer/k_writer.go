@@ -49,7 +49,11 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 	k := &KWriter{
 		Producer: p,
 	}
-	hystrix.SetConcurrency(HystrixCommandName, hystrixConcurrencyLevel)
+	hystrix.ConfigureCommand(HystrixCommandName, hystrix.CommandConfig{
+		Timeout:               1000,
+		MaxConcurrentRequests: hystrixConcurrencyLevel,
+		ErrorPercentThreshold: 10,
+	})
 	return k, nil
 }
 
