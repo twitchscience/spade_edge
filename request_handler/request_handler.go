@@ -49,6 +49,11 @@ type SpadeEdgeLogger interface {
 	Close()
 }
 
+type NoopLogger struct{}
+
+func (n *NoopLogger) Log(e *spade.Event) error { return nil }
+func (n *NoopLogger) Close()                   {}
+
 type SpadeHandler struct {
 	StatLogger statsd.Statter
 	EdgeLogger SpadeEdgeLogger
@@ -58,11 +63,15 @@ type SpadeHandler struct {
 type FileAuditLogger struct {
 	AuditLogger *gologging.UploadLogger
 	SpadeLogger *gologging.UploadLogger
+	KLogger     SpadeEdgeLogger
 }
+
+func (a *FileAuditLogger) Init() {}
 
 func (a *FileAuditLogger) Close() {
 	a.AuditLogger.Close()
 	a.SpadeLogger.Close()
+	a.KLogger.Close()
 }
 
 func (a *FileAuditLogger) Log(event *spade.Event) error {
@@ -73,6 +82,7 @@ func (a *FileAuditLogger) Log(event *spade.Event) error {
 		return err
 	}
 	a.SpadeLogger.Log("%s", logLine)
+	a.KLogger.Log(event)
 	return nil
 }
 
@@ -110,6 +120,7 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 		// for example, something that maybe
 		// application/x-www-form-urlencoded but with the Content-Type
 		// header set incorrectly... best effort here on out
+
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			return http.StatusBadRequest
