@@ -60,21 +60,21 @@ type SpadeHandler struct {
 	Assigner   uuid.UUIDAssigner
 }
 
-type FileAuditLogger struct {
+type EventLoggers struct {
 	AuditLogger *gologging.UploadLogger
 	SpadeLogger *gologging.UploadLogger
 	KLogger     SpadeEdgeLogger
 }
 
-func (a *FileAuditLogger) Init() {}
+func (a *EventLoggers) Init() {}
 
-func (a *FileAuditLogger) Close() {
+func (a *EventLoggers) Close() {
 	a.AuditLogger.Close()
 	a.SpadeLogger.Close()
 	a.KLogger.Close()
 }
 
-func (a *FileAuditLogger) Log(event *spade.Event) error {
+func (a *EventLoggers) Log(event *spade.Event) error {
 	a.AuditLogger.Log("%s", auditTrail(event))
 
 	logLine, err := spade.Marshal(event)

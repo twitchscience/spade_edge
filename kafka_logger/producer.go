@@ -1,16 +1,17 @@
-package k_writer
+package kafka_logger
 
 import (
 	"github.com/shopify/sarama"
 )
 
-// SimpleProducer publishes Kafka messages. It routes messages to the correct broker, refreshing metadata as appropriate,
-// and parses responses for errors. You must call Close() on a producer to avoid leaks, it may not be garbage-collected automatically when
-// it passes out of scope (this is in addition to calling Close on the underlying client, which is still necessary).
+// Producer publishes Kafka messages.
+// It routes messages to the correct broker, refreshing metadata as appropriate,
+// and parses responses for errors. You must call Close() on a producer.
 type Producer struct {
 	producer        *sarama.Producer
 	topic           string
 	newExpectations chan *producerExpect
+	client          *sarama.Client
 }
 
 type producerExpect struct {
@@ -18,16 +19,11 @@ type producerExpect struct {
 	result chan error
 }
 
-// NewSimpleProducer creates a new SimpleProducer using the given client, topic and partitioner. If the
-// partitioner is nil, messages are partitioned by the hash of the key
-// (or randomly if there is no key).
+// NewProducer creates a new Producer using the given client, topic and configuration.
 func NewProducer(client *sarama.Client, topic string, config *sarama.ProducerConfig) (*Producer, error) {
 	if topic == "" {
 		return nil, sarama.ConfigurationError("Empty topic")
 	}
-
-	config.AckSuccesses = true
-
 	prod, err := sarama.NewProducer(client, config)
 	if err != nil {
 		return nil, err
@@ -37,6 +33,7 @@ func NewProducer(client *sarama.Client, topic string, config *sarama.ProducerCon
 		producer:        prod,
 		topic:           topic,
 		newExpectations: make(chan *producerExpect), // this must be unbuffered
+		client:          client,
 	}
 
 	return sp, nil
@@ -45,12 +42,20 @@ func NewProducer(client *sarama.Client, topic string, config *sarama.ProducerCon
 func (p *Producer) SendMessage(key, value sarama.Encoder) error {
 	msg := &sarama.MessageToSend{Topic: p.topic, Key: key, Value: value}
 	expectation := &producerExpect{msg: msg, result: make(chan error)}
+	// TODO:
+	// may want to pull these messages and assorted accounting from a pool.
+
 	p.newExpectations <- expectation
 	p.producer.Input() <- msg
 
 	return <-expectation.result
 }
 
+// This is a gnarly function. It manages accounting for unacked batches queued to send to kafka.
+// unmatched is a table for managing which request is outstanding. If sends and error on the
+// result chan if an Error occurs.
+//
+// An alternative is to make a go proc for each request to handle that requests accounting.
 func (p *Producer) MatchResponses() {
 	newExpectations := p.newExpectations
 	unmatched := make(map[*sarama.MessageToSend]chan error)
@@ -60,8 +65,8 @@ func (p *Producer) MatchResponses() {
 		select {
 		case expectation, ok := <-newExpectations:
 			if !ok {
-				delete(unmatched, nil) // let us exit when we've processed the last message
-				newExpectations = nil  // prevent spinning on a closed channel until that happens
+				delete(unmatched, nil)
+				newExpectations = nil
 				continue
 			}
 			unmatched[expectation.msg] = expectation.result
@@ -75,7 +80,12 @@ func (p *Producer) MatchResponses() {
 	}
 }
 
+// Closes the producer and the underlying client.
 func (p *Producer) Close() error {
 	close(p.newExpectations)
-	return p.producer.Close()
+	err := p.producer.Close()
+	if err != nil {
+		return err
+	}
+	return p.client.Close()
 }

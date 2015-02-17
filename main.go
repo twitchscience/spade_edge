@@ -12,7 +12,7 @@ import (
 
 	"github.com/twitchscience/gologging/gologging"
 	gen "github.com/twitchscience/gologging/key_name_generator"
-	"github.com/twitchscience/spade_edge/k_writer"
+	"github.com/twitchscience/spade_edge/kafka_logger"
 	"github.com/twitchscience/spade_edge/request_handler"
 
 	"log"
@@ -180,19 +180,19 @@ func main() {
 	// SpadeLogger writes requests to a file for processing by the spade processor.
 	// K(afka)Logger writes produces messages for kafka, currently in dark launch.
 	// We allow the klogger to be null incase we boot up with an unresponsive kafka cluster.
-	var logger *request_handler.FileAuditLogger
+	var logger *request_handler.EventLoggers
 	brokerList := ParseBrokerList(*brokers)
-	klogger, err := k_writer.NewKWriter(*clientId, brokerList)
+	klogger, err := kafka_logger.NewKafkaLogger(*clientId, brokerList)
 	if err == nil {
-		klogger.(*k_writer.KWriter).Init()
-		logger = &request_handler.FileAuditLogger{
+		klogger.(*kafka_logger.KafkaLogger).Init()
+		logger = &request_handler.EventLoggers{
 			AuditLogger: auditLogger,
 			SpadeLogger: spadeEventLogger,
 			KLogger:     klogger,
 		}
 	} else {
 		log.Printf("Got Error while building logger: %s + %v\nUsing Nop Logger\n", err, brokerList)
-		logger = &request_handler.FileAuditLogger{
+		logger = &request_handler.EventLoggers{
 			AuditLogger: auditLogger,
 			SpadeLogger: spadeEventLogger,
 			KLogger:     &request_handler.NoopLogger{},
