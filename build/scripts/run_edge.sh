@@ -20,7 +20,7 @@ then
   echo "WARN: Continuing without Kafka."
 fi
 
-exec spade_edge \
+exec ./spade_edge \
   -kafka_brokers "${KAFKA_BROKERS}" \
   -client_id "${HOST}" \
   -log_dir /mnt \
