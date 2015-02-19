@@ -60,7 +60,6 @@
       "inline":
       [
         "sudo chmod +x /opt/science/{{user `project`}}/bin/*",
-        "sudo apt-get install -y dpkg",
         "curl -O http://science.twitch.tv/debs/seeker_1.0.3_amd64.deb",
         "sudo dpkg -i seeker_1.0.3_amd64.deb",
         "for f in /opt/science/{{user `project`}}/config/upstart/*.conf; do sudo ln -s $f /etc/init/$(basename $f); done"
