@@ -15,6 +15,7 @@ export GOARCH=amd64
 export GOOS=linux
 
 SEEKER_DEBIAN="http://science.twitch.tv/debs/seeker_1.0.3_amd64.deb"
+
 # godep restore
 godep go vet ./...
 godep go test -v ./...
