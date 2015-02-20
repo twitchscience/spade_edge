@@ -14,6 +14,7 @@ USE_PRIVATE_IP=${5:-"false"}
 export GOARCH=amd64
 export GOOS=linux
 
+SEEKER_DEBIAN="http://science.twitch.tv/debs/seeker_1.0.3_amd64.deb"
 # godep restore
 godep go vet ./...
 godep go test -v ./...
@@ -28,4 +29,5 @@ packer                                          \
      -var "use_private_ip=${USE_PRIVATE_IP}"    \
      -var "binary_dir"=${GOPATH}/bin            \
      -var "scripts_dir"=build/scripts           \
+     -var "seeker_debian=${SEEKER_DEBIAN}"      \
      build/packer.json

@@ -1,4 +1,4 @@
-package k_writer
+package kafka_logger
 
 import (
 	"time"
@@ -12,11 +12,14 @@ import (
 )
 
 const (
-	HystrixCommandName      = "KafkaEdgeLog"
+	hystrixCommandName      = "KafkaEdgeLog"
 	hystrixConcurrencyLevel = 5000
 )
 
-type KWriter struct {
+// KafkaLogger wraps a Producer and provides sane defaults.
+// It also exposes a log method to send messages to kafka in a
+// hystrix-wrapped call.
+type KafkaLogger struct {
 	Producer *Producer
 }
 
@@ -24,11 +27,14 @@ func GetTopic() string {
 	return "spade-edge-" + env.GetCloudEnv()
 }
 
-func (l *KWriter) Init() {
+// An initialize function for the KafkaLogger.
+// This MUST be called prior to any calls to Log(...)
+func (l *KafkaLogger) Init() {
 	go l.Producer.MatchResponses()
 }
 
-func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLogger, error) {
+// Creates a KafkaLogger for a given kafka cluster. We identify ourselves with clientId.
+func NewKafkaLogger(clientId string, brokers []string) (request_handler.SpadeEdgeLogger, error) {
 	c, err := sarama.NewClient(clientId, brokers, sarama.NewClientConfig())
 	if err != nil {
 		return nil, err
@@ -40,16 +46,17 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 	config.FlushMsgCount = 1000
 	// Might want to try out compression
 	config.Compression = sarama.CompressionNone
+	config.AckSuccesses = true
 
 	p, err := NewProducer(c, GetTopic(), config)
 	if err != nil {
 		return nil, err
 	}
 
-	k := &KWriter{
+	k := &KafkaLogger{
 		Producer: p,
 	}
-	hystrix.ConfigureCommand(HystrixCommandName, hystrix.CommandConfig{
+	hystrix.ConfigureCommand(hystrixCommandName, hystrix.CommandConfig{
 		Timeout:               1000,
 		MaxConcurrentRequests: hystrixConcurrencyLevel,
 		ErrorPercentThreshold: 10,
@@ -57,17 +64,19 @@ func NewKWriter(clientId string, brokers []string) (request_handler.SpadeEdgeLog
 	return k, nil
 }
 
-func (l *KWriter) Log(e *spade.Event) error {
+// Sends a spade Event to kafka.
+func (l *KafkaLogger) Log(e *spade.Event) error {
 	c, err := spade.Marshal(e)
 	if err != nil {
 		return err
 	}
-	hystrix.Go(HystrixCommandName, func() error {
+	hystrix.Go(hystrixCommandName, func() error {
 		return l.Producer.SendMessage(sarama.StringEncoder(e.Uuid), sarama.ByteEncoder(c))
 	}, nil)
 	return nil
 }
 
-func (l *KWriter) Close() {
+// Causes the writer to safely close.
+func (l *KafkaLogger) Close() {
 	l.Producer.Close()
 }
