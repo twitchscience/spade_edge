@@ -9,7 +9,7 @@
     "branch": null,
     "source_ami": null,
     "use_private_ip": null,
-    "seeker_debian": null,
+    "seeker_debian": null
   },
   "builders": [{
     "type": "amazon-ebs",
