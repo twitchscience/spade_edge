@@ -13,6 +13,9 @@ export EDGE_VERSION="1"
 export CROSS_DOMAIN_LOCATION="/opt/science/spade_edge/config/crossdomain.xml"
 export STATSD_HOSTPORT="localhost:8125"
 export GOMAXPROCS="4"
+export CONFIG_PREFIX="s3://$S3_CONFIG_BUCKET/$VPC_SUBNET_TAG/$CLOUD_APP/$CLOUD_ENVIRONMENT"
+aws s3 cp --region us-west-2 "$CONFIG_PREFIX/conf.sh" conf.sh
+source conf.sh
 
 if [ -z "${KAFKA_BROKERS}" ]
 then
