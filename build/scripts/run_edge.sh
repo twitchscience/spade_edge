@@ -23,6 +23,12 @@ then
   echo "WARN: Continuing without Kafka."
 fi
 
+# Optional config, often set in s3
+# export MAX_LOG_LINES=1000000  # 1 million
+# export MAX_LOG_AGE_SECS=600   # 10 minutes
+# export MAX_AUDIT_LOG_LINES=1000000  # 1 million
+# export MAX_AUDIT_LOG_AGE_SECS=600   # 10 minutes
+
 exec ./spade_edge \
   -kafka_brokers "${KAFKA_BROKERS}" \
   -client_id "${HOST}" \

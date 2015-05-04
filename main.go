@@ -49,7 +49,26 @@ var (
 		Can leave empty if not using`)
 	clientId   = flag.String("client_id", "", "id of this client.")
 	VERSION, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
+
+	maxLogLines = int(getInt64FromEnv("MAX_LOG_LINES", 1000000))                          // default 1 million
+	maxLogAge   = time.Duration(getInt64FromEnv("MAX_LOG_AGE_SECS", 10*60)) * time.Second // default 10 mins
+
+	auditMaxLogLines = int(getInt64FromEnv("MAX_AUDIT_LOG_LINES", 1000000))                          // default 1 million
+	auditMaxLogAge   = time.Duration(getInt64FromEnv("MAX_AUDIT_LOG_AGE_SECS", 10*60)) * time.Second // default 10 mins
+
 )
+
+func getInt64FromEnv(target string, def int64) int64 {
+	env := os.Getenv(target)
+	if env == "" {
+		return def
+	}
+	i, err := strconv.ParseInt(env, 10, 64)
+	if err != nil {
+		return def
+	}
+	return i
+}
 
 func ParseBrokerList(csv string) []string {
 	return strings.Split(csv, ",")
@@ -115,8 +134,6 @@ func initStatsd(statsPrefix, statsdHostport string) (stats statsd.Statter, err e
 	return
 }
 
-const MAX_LINES_PER_LOG = 1000000 // 1 million
-
 func main() {
 	flag.Parse()
 
@@ -142,8 +159,8 @@ func main() {
 	auditInfo := gen.BuildInstanceInfo(&gen.EnvInstanceFetcher{}, "spade_edge_audit", *logging_dir)
 	loggingInfo := gen.BuildInstanceInfo(&gen.EnvInstanceFetcher{}, "spade_edge", *logging_dir)
 
-	auditRotateCoordinator := gologging.NewRotateCoordinator(MAX_LINES_PER_LOG, time.Minute*10)
-	loggingRotateCoordinator := gologging.NewRotateCoordinator(MAX_LINES_PER_LOG, time.Minute*10)
+	auditRotateCoordinator := gologging.NewRotateCoordinator(auditMaxLogLines, auditMaxLogAge)
+	loggingRotateCoordinator := gologging.NewRotateCoordinator(maxLogLines, maxLogAge)
 
 	auditLogger, err := gologging.StartS3Logger(
 		auditRotateCoordinator,
