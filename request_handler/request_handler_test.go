@@ -252,6 +252,16 @@ var (
 		},
 		testTuple{
 			Request: testRequest{
+				Endpoint: "robots.txt",
+				Verb:     "GET",
+			},
+			Response: testResponse{
+				Code: http.StatusOK,
+				Body: string(robotsResponse),
+			},
+		},
+		testTuple{
+			Request: testRequest{
 				Endpoint: "healthcheck",
 				Verb:     "GET",
 			},
