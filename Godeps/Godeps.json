@@ -1,15 +1,7 @@
 {
 	"ImportPath": "github.com/twitchscience/spade_edge",
-	"GoVersion": "go1.3",
-	"Packages": [
-		"./..."
-	],
+	"GoVersion": "go1.5.1",
 	"Deps": [
-		{
-			"ImportPath": "code.google.com/p/snappy-go/snappy",
-			"Comment": "null-15",
-			"Rev": "12e4b4183793ac4b061921e7980845e750679fd0"
-		},
 		{
 			"ImportPath": "github.com/afex/hystrix-go/hystrix",
 			"Rev": "71c7af1ae77ec245cce210e607930debd96752c7"
@@ -29,14 +21,6 @@
 		{
 			"ImportPath": "github.com/crowdmob/goamz/sqs",
 			"Rev": "c5ba9ad45b6ac022326f0ff9762d6bac33ca8f88"
-		},
-		{
-			"ImportPath": "github.com/eapache/go-resiliency/breaker",
-			"Rev": "779a811c89f2d4ca7c2cd7efe1cd350027b407bf"
-		},
-		{
-			"ImportPath": "github.com/shopify/sarama",
-			"Rev": "950d619a1a4b311a8b55bee5bd3a49c6cb82fdec"
 		},
 		{
 			"ImportPath": "github.com/twitchscience/aws_utils/common",

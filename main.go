@@ -12,7 +12,6 @@ import (
 
 	"github.com/twitchscience/gologging/gologging"
 	gen "github.com/twitchscience/gologging/key_name_generator"
-	"github.com/twitchscience/spade_edge/kafka_logger"
 	"github.com/twitchscience/spade_edge/request_handler"
 
 	"log"
@@ -22,7 +21,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -49,10 +47,6 @@ var (
 		`Which origins should we advertise accepting POST and GET from.
 Example: http://www.twitch.tv https://www.twitch.tv
 Empty ignores CORS.`)
-	brokers = flag.String("kafka_brokers", "",
-		`<host>:<port>,<host>:<port>,... of kafka brokers.
-		Can leave empty if not using`)
-	clientId   = flag.String("client_id", "", "id of this client.")
 	VERSION, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
 
 	maxLogLines = int(getInt64FromEnv("MAX_LOG_LINES", 1000000))                          // default 1 million
@@ -73,10 +67,6 @@ func getInt64FromEnv(target string, def int64) int64 {
 		return def
 	}
 	return i
-}
-
-func ParseBrokerList(csv string) []string {
-	return strings.Split(csv, ",")
 }
 
 type DummyNotifierHarness struct {
@@ -200,25 +190,10 @@ func main() {
 	// Initialize Loggers.
 	// AuditLogger writes to the audit log, for analysis of system success rate.
 	// SpadeLogger writes requests to a file for processing by the spade processor.
-	// K(afka)Logger writes produces messages for kafka, currently in dark launch.
-	// We allow the klogger to be null incase we boot up with an unresponsive kafka cluster.
 	var logger *request_handler.EventLoggers
-	brokerList := ParseBrokerList(*brokers)
-	klogger, err := kafka_logger.NewKafkaLogger(*clientId, brokerList)
-	if err == nil {
-		klogger.(*kafka_logger.KafkaLogger).Init()
-		logger = &request_handler.EventLoggers{
-			AuditLogger: auditLogger,
-			SpadeLogger: spadeEventLogger,
-			KLogger:     klogger,
-		}
-	} else {
-		log.Printf("Got Error while building logger: %s + %v\nUsing Nop Logger\n", err, brokerList)
-		logger = &request_handler.EventLoggers{
-			AuditLogger: auditLogger,
-			SpadeLogger: spadeEventLogger,
-			KLogger:     &request_handler.NoopLogger{},
-		}
+	logger = &request_handler.EventLoggers{
+		AuditLogger: auditLogger,
+		SpadeLogger: spadeEventLogger,
 	}
 
 	// Trigger close on receipt of SIGINT
