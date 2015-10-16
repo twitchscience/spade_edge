@@ -60,8 +60,9 @@ type SpadeHandler struct {
 }
 
 type EventLoggers struct {
-	AuditLogger *gologging.UploadLogger
-	SpadeLogger *gologging.UploadLogger
+	AuditLogger   *gologging.UploadLogger
+	SpadeLogger   *gologging.UploadLogger
+	KinesisLogger SpadeEdgeLogger
 }
 
 func NewSpadeHandler(stats statsd.Statter, logger SpadeEdgeLogger, assigner uuid.UUIDAssigner, CORSOrigins string) *SpadeHandler {
@@ -91,13 +92,14 @@ func (a *EventLoggers) Close() {
 }
 
 func (a *EventLoggers) Log(event *spade.Event) error {
-	a.AuditLogger.Log("%s", auditTrail(event))
+	// a.AuditLogger.Log("%s", auditTrail(event))
 
-	logLine, err := spade.Marshal(event)
-	if err != nil {
-		return err
-	}
-	a.SpadeLogger.Log("%s", logLine)
+	// logLine, err := spade.Marshal(event)
+	// if err != nil {
+	// 	return err
+	// }
+	// a.SpadeLogger.Log("%s", logLine)
+	a.KinesisLogger.Log(event)
 	return nil
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/twitchscience/gologging/gologging"
 	gen "github.com/twitchscience/gologging/key_name_generator"
+	"github.com/twitchscience/spade_edge/kinesis_logger"
 	"github.com/twitchscience/spade_edge/request_handler"
 
 	"log"
@@ -187,13 +188,16 @@ func main() {
 		log.Fatalf("Got Error while building logger: %s\n", err)
 	}
 
+	kinesisLogger, err := kinesis_logger.New("us-west-2", "spade-edge-test")
+
 	// Initialize Loggers.
 	// AuditLogger writes to the audit log, for analysis of system success rate.
 	// SpadeLogger writes requests to a file for processing by the spade processor.
-	var logger *request_handler.EventLoggers
-	logger = &request_handler.EventLoggers{
-		AuditLogger: auditLogger,
-		SpadeLogger: spadeEventLogger,
+	// KinesisLogger writes to a kinesis stream
+	var logger = &request_handler.EventLoggers{
+		AuditLogger:   auditLogger,
+		SpadeLogger:   spadeEventLogger,
+		KinesisLogger: kinesisLogger,
 	}
 
 	// Trigger close on receipt of SIGINT
