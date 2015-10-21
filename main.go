@@ -44,6 +44,10 @@ var (
 		":8888",
 		"Which port are we listenting on form: ':<port>' e.g. :8888",
 	)
+	cors_origins = flag.String("cors_origins", "",
+		`Which origins should we advertise accepting POST and GET from.
+Example: http://www.twitch.tv https://www.twitch.tv
+Empty ignores CORS.`)
 	brokers = flag.String("kafka_brokers", "",
 		`<host>:<port>,<host>:<port>,... of kafka brokers.
 		Can leave empty if not using`)
@@ -233,12 +237,8 @@ func main() {
 
 	// setup server and listen
 	server := &http.Server{
-		Addr: *listen_port,
-		Handler: &request_handler.SpadeHandler{
-			StatLogger: stats,
-			EdgeLogger: logger,
-			Assigner:   request_handler.Assigner,
-		},
+		Addr:           *listen_port,
+		Handler:        request_handler.NewSpadeHandler(stats, logger, request_handler.Assigner, *cors_origins),
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 0.5MB

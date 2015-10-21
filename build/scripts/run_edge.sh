@@ -14,6 +14,7 @@ export CROSS_DOMAIN_LOCATION="/opt/science/spade_edge/config/crossdomain.xml"
 export STATSD_HOSTPORT="localhost:8125"
 export GOMAXPROCS="4"
 export CONFIG_PREFIX="s3://$S3_CONFIG_BUCKET/$VPC_SUBNET_TAG/$CLOUD_APP/$CLOUD_ENVIRONMENT"
+CORS_ORIGINS=""  # Often overridden in conf.sh
 aws s3 cp --region us-west-2 "$CONFIG_PREFIX/conf.sh" conf.sh
 source conf.sh
 
@@ -23,7 +24,7 @@ then
   echo "WARN: Continuing without Kafka."
 fi
 
-# Optional config, often set in s3
+# Optional config, often set in conf.sh
 # export MAX_LOG_LINES=1000000  # 1 million
 # export MAX_LOG_AGE_SECS=600   # 10 minutes
 # export MAX_AUDIT_LOG_LINES=1000000  # 1 million
@@ -34,4 +35,5 @@ exec ./spade_edge \
   -client_id "${HOST}" \
   -log_dir /mnt \
   -port ":80" \
+  -cors_origins "${CORS_ORIGINS}" \
   -stat_prefix "${CLOUD_APP}.${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT}}.${EC2_REGION}.${CLOUD_AUTO_SCALE_GROUP##*-}"
