@@ -108,23 +108,24 @@ func auditTrail(e *spade.Event) string {
 	return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid)
 }
 
-func getIpFromHeader(headerKey string, header http.Header) net.IP {
-	clientIp := header.Get(headerKey)
-	comma := strings.Index(clientIp, ",")
-	if comma > -1 {
-		clientIp = clientIp[:comma]
+func parseLastForwarder(header string) net.IP {
+	var clientIp string
+	comma := strings.LastIndex(header, ",")
+	if comma > -1 && comma < len(header)+1 {
+		clientIp = header[comma+1:]
+	} else {
+		clientIp = header
 	}
 
-	return net.ParseIP(clientIp)
+	return net.ParseIP(strings.TrimSpace(clientIp))
 }
 
 func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestContext) int {
 	statTimer := newTimerInstance()
 
-	clientIp := getIpFromHeader(context.IpHeader, r.Header)
-	if clientIp == nil {
-		return http.StatusBadRequest
-	}
+	xForwardedFor := r.Header.Get(context.IpHeader)
+	clientIp := parseLastForwarder(xForwardedFor)
+
 	context.Timers["ip"] = statTimer.stopTiming()
 
 	err := r.ParseForm()
@@ -163,6 +164,7 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 	event := spade.NewEvent(
 		context.Now,
 		clientIp,
+		xForwardedFor,
 		uuid,
 		data,
 	)
