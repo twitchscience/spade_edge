@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/twitchscience/spade_edge",
-	"GoVersion": "go1.5.1",
+	"GoVersion": "go1.3",
 	"Deps": [
 		{
 			"ImportPath": "github.com/afex/hystrix-go/hystrix",

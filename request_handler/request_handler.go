@@ -2,7 +2,6 @@ package request_handler
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/twitchscience/gologging/gologging"
 	"github.com/twitchscience/scoop_protocol/spade"
 	"github.com/twitchscience/spade_edge/uuid"
 )
