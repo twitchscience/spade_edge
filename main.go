@@ -1,18 +1,13 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 
 	"github.com/afex/hystrix-go/hystrix"
-	"github.com/twitchscience/aws_utils/environment"
-	"github.com/twitchscience/aws_utils/notifier"
-	"github.com/twitchscience/aws_utils/uploader"
+	"github.com/twitchscience/scoop_protocol/spade"
 
-	"github.com/twitchscience/gologging/gologging"
-	gen "github.com/twitchscience/gologging/key_name_generator"
-	"github.com/twitchscience/spade_edge/kinesis_logger"
+	"github.com/twitchscience/spade_edge/loggers"
 	"github.com/twitchscience/spade_edge/request_handler"
 
 	"log"
@@ -30,13 +25,7 @@ import (
 	"github.com/crowdmob/goamz/s3"
 )
 
-const (
-	auditBucketName = "spade-audits"
-	eventBucketName = "spade-edge"
-)
-
 var (
-	CLOUD_ENV    = environment.GetCloudEnv()
 	stats_prefix = flag.String("stat_prefix", "edge", "statsd prefix")
 	logging_dir  = flag.String("log_dir", ".", "The directory to log these files to")
 	listen_port  = flag.String(
@@ -48,7 +37,10 @@ var (
 		`Which origins should we advertise accepting POST and GET from.
 Example: http://www.twitch.tv https://www.twitch.tv
 Empty ignores CORS.`)
-	VERSION, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
+
+	event_log_name      = flag.String("event_log_name", "", "Name of the event log (or none)")
+	audit_log_name      = flag.String("audit_log_name", "", "Name of the audit log (or none)")
+	kinesis_stream_name = flag.String("kinesis_stream_name", "", "Name of kinesis stream (or none)")
 
 	maxLogLines = int(getInt64FromEnv("MAX_LOG_LINES", 1000000))                          // default 1 million
 	maxLogAge   = time.Duration(getInt64FromEnv("MAX_LOG_AGE_SECS", 10*60)) * time.Second // default 10 mins
@@ -70,61 +62,12 @@ func getInt64FromEnv(target string, def int64) int64 {
 	return i
 }
 
-type DummyNotifierHarness struct {
-}
-type SQSNotifierHarness struct {
-	qName    string
-	version  int
-	notifier *notifier.SQSClient
-}
-type SQSErrorHarness struct {
-	qName    string
-	notifier *notifier.SQSClient
-}
-
-func (d *DummyNotifierHarness) SendMessage(r *uploader.UploadReceipt) error {
-	return nil
-}
-
-func BuildSQSNotifierHarness() *SQSNotifierHarness {
-	client := notifier.DefaultClient
-	client.Signer.RegisterMessageType("edge", func(args ...interface{}) (string, error) {
-		if len(args) < 2 {
-			return "", errors.New("Missing correct number of args ")
-		}
-		return fmt.Sprintf("{\"version\":%d,\"keyname\":%q}", args...), nil
-	})
-	return &SQSNotifierHarness{
-		qName:    fmt.Sprintf("spade-edge-%s", CLOUD_ENV),
-		version:  VERSION,
-		notifier: client,
-	}
-}
-
-func BuildSQSErrorHarness() *SQSErrorHarness {
-	return &SQSErrorHarness{
-		qName:    fmt.Sprintf("uploader-error-spade-edge-%s", CLOUD_ENV),
-		notifier: notifier.DefaultClient,
-	}
-}
-
-func (s *SQSErrorHarness) SendError(er error) {
-	err := s.notifier.SendMessage("error", s.qName, er)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
-func (s *SQSNotifierHarness) SendMessage(message *uploader.UploadReceipt) error {
-	return s.notifier.SendMessage("edge", s.qName, s.version, message.KeyName)
-}
-
 func initStatsd(statsPrefix, statsdHostport string) (stats statsd.Statter, err error) {
 	if statsdHostport == "" {
 		stats, _ = statsd.NewNoop()
 	} else {
 		if stats, err = statsd.New(statsdHostport, *stats_prefix); err != nil {
-			log.Fatalf("Statsd configuration error: %v", err)
+			log.Fatalf("Statsd configuration error: %v\n", err)
 		}
 	}
 	return
@@ -135,69 +78,74 @@ func main() {
 
 	stats, err := initStatsd(*stats_prefix, os.Getenv("STATSD_HOSTPORT"))
 	if err != nil {
-		log.Fatalf("Statsd configuration error: %v", err)
+		log.Fatalf("Statsd configuration error: %v\n", err)
 	}
 
 	auth, err := aws.GetAuth("", "", "", time.Now())
 	if err != nil {
 		log.Fatalln("Failed to recieve auth from env")
 	}
-	awsConnection := s3.New(
+	s3Connection := s3.New(
 		auth,
 		aws.USWest2,
 	)
 
-	auditBucket := awsConnection.Bucket(auditBucketName + "-" + CLOUD_ENV)
-	auditBucket.PutBucket(s3.BucketOwnerFull)
-	eventBucket := awsConnection.Bucket(eventBucketName + "-" + CLOUD_ENV)
-	eventBucket.PutBucket(s3.BucketOwnerFull)
+	var allLoggers []request_handler.SpadeEdgeLogger
 
-	auditInfo := gen.BuildInstanceInfo(&gen.EnvInstanceFetcher{}, "spade_edge_audit", *logging_dir)
-	loggingInfo := gen.BuildInstanceInfo(&gen.EnvInstanceFetcher{}, "spade_edge", *logging_dir)
-
-	auditRotateCoordinator := gologging.NewRotateCoordinator(auditMaxLogLines, auditMaxLogAge)
-	loggingRotateCoordinator := gologging.NewRotateCoordinator(maxLogLines, maxLogAge)
-
-	auditLogger, err := gologging.StartS3Logger(
-		auditRotateCoordinator,
-		auditInfo,
-		&DummyNotifierHarness{},
-		&uploader.S3UploaderBuilder{
-			Bucket:           auditBucket,
-			KeyNameGenerator: &gen.EdgeKeyNameGenerator{Info: auditInfo},
-		},
-		BuildSQSErrorHarness(),
-		2,
-	)
-	if err != nil {
-		log.Fatalf("Got Error while building audit: %s\n", err)
+	if len(*event_log_name) > 0 {
+		eventLogger, err := loggers.NewS3Logger(
+			s3Connection,
+			*event_log_name,
+			maxLogLines,
+			maxLogAge,
+			true,
+			*logging_dir,
+			func(e *spade.Event) (string, error) {
+				b, err := spade.Marshal(e)
+				if err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("%s", b), nil
+			})
+		if err != nil {
+			log.Fatalf("Error creating event logger: %v\n", err)
+		}
+		allLoggers = append(allLoggers, eventLogger)
+	} else {
+		log.Println("WARNING: No event logger specified!")
 	}
 
-	spadeEventLogger, err := gologging.StartS3Logger(
-		loggingRotateCoordinator,
-		loggingInfo,
-		BuildSQSNotifierHarness(),
-		&uploader.S3UploaderBuilder{
-			Bucket:           eventBucket,
-			KeyNameGenerator: &gen.EdgeKeyNameGenerator{Info: loggingInfo},
-		},
-		BuildSQSErrorHarness(),
-		2,
-	)
-	if err != nil {
-		log.Fatalf("Got Error while building logger: %s\n", err)
+	if len(*audit_log_name) > 0 {
+		auditLogger, err := loggers.NewS3Logger(
+			s3Connection,
+			*audit_log_name,
+			auditMaxLogLines,
+			auditMaxLogAge,
+			false,
+			*logging_dir,
+			func(e *spade.Event) (string, error) {
+				return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid), nil
+			})
+		if err != nil {
+			log.Fatalf("Error creating audit logger: %v\n", err)
+		}
+		allLoggers = append(allLoggers, auditLogger)
+	} else {
+		log.Println("WARNING: No audit logger specified!")
 	}
 
-	kinesisLogger, err := kinesis_logger.New("us-west-2", "spade-edge-test")
+	if len(*kinesis_stream_name) > 0 {
+		kinesisLogger, err := loggers.NewKinesisLogger("us-west-2", *kinesis_stream_name)
+		if err != nil {
+			log.Fatalf("Error creating KinesisLogger %v\n", err)
+		}
+		allLoggers = append(allLoggers, kinesisLogger)
+	} else {
+		log.Println("WARNING: No kinesis logger specified!")
+	}
 
-	// Initialize Loggers.
-	// AuditLogger writes to the audit log, for analysis of system success rate.
-	// SpadeLogger writes requests to a file for processing by the spade processor.
-	// KinesisLogger writes to a kinesis stream
-	var logger = &request_handler.EventLoggers{
-		AuditLogger:   auditLogger,
-		SpadeLogger:   spadeEventLogger,
-		KinesisLogger: kinesisLogger,
+	if len(allLoggers) == 0 {
+		log.Fatalf("No loggers specified!")
 	}
 
 	// Trigger close on receipt of SIGINT
@@ -207,7 +155,9 @@ func main() {
 	go func() {
 		<-sigc
 		// Cause flush
-		logger.Close()
+		for _, logger := range allLoggers {
+			logger.Close()
+		}
 		os.Exit(0)
 	}()
 

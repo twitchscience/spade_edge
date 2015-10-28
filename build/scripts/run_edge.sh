@@ -22,6 +22,9 @@ source conf.sh
 # export MAX_AUDIT_LOG_AGE_SECS=600   # 10 minutes
 
 exec ./spade_edge \
+  -event_log_name="spade-edge-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-DEV}}" \
+  -audit_log_name="spade-audits-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-DEV}}" \
+  -kinesis_stream_name="spade-edge-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-DEV}}" \
   -client_id "${HOST}" \
   -log_dir /mnt \
   -port ":80" \

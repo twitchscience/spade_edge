@@ -46,14 +46,9 @@ type SpadeEdgeLogger interface {
 	Close()
 }
 
-type NoopLogger struct{}
-
-func (n *NoopLogger) Log(e *spade.Event) error { return nil }
-func (n *NoopLogger) Close()                   {}
-
 type SpadeHandler struct {
 	StatLogger  statsd.Statter
-	EdgeLogger  SpadeEdgeLogger
+	EdgeLoggers []SpadeEdgeLogger
 	Assigner    uuid.UUIDAssigner
 	Time        func() time.Time // Defaults to time.Now
 	corsOrigins map[string]bool
@@ -120,6 +115,7 @@ func parseLastForwarder(header string) net.IP {
 }
 
 func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestContext) int {
+	now := context.Now
 	statTimer := newTimerInstance()
 
 	xForwardedFor := r.Header.Get(context.IpHeader)
@@ -161,18 +157,25 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 	context.Timers["uuid"] = statTimer.stopTiming()
 
 	event := spade.NewEvent(
-		context.Now,
+		now,
 		clientIp,
 		xForwardedFor,
 		uuid,
 		data,
 	)
 
-	// Note, Log() has a side effect of writing to the log
-	if err = s.EdgeLogger.Log(event); err != nil {
-		return http.StatusBadRequest
+	defer func() {
+		context.Timers["write"] = statTimer.stopTiming()
+	}()
+
+	for _, logger := range s.EdgeLoggers {
+		if err := logger.Log(event); err != nil {
+			// Important to note, since the first logger to fail will cause a return of
+			// http.StatusBadRequest, further loggers in the array will not get called but
+			// some might have completed successfully
+			return http.StatusBadRequest
+		}
 	}
-	context.Timers["write"] = statTimer.stopTiming()
 
 	return http.StatusNoContent
 }
