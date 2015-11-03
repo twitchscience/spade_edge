@@ -21,9 +21,12 @@ type kinesisLogger struct {
 }
 
 func NewKinesisLogger(region string, streamName string) (request_handler.SpadeEdgeLogger, error) {
-	auth, err := kinesis.NewAuthFromEnv()
+	auth, err := kinesis.NewAuthFromMetadata()
 	if err != nil {
-		return nil, err
+		auth, err = kinesis.NewAuthFromEnv()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	client := kinesis.New(auth, region)
