@@ -170,7 +170,7 @@ func main() {
 	// setup server and listen
 	server := &http.Server{
 		Addr:           *listen_port,
-		Handler:        request_handler.NewSpadeHandler(stats, logger, request_handler.Assigner, *cors_origins),
+		Handler:        request_handler.NewSpadeHandler(stats, allLoggers, request_handler.Assigner, *cors_origins),
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 0.5MB

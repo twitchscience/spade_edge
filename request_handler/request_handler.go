@@ -52,16 +52,10 @@ type SpadeHandler struct {
 	corsOrigins map[string]bool
 }
 
-type EventLoggers struct {
-	AuditLogger   *gologging.UploadLogger
-	SpadeLogger   *gologging.UploadLogger
-	KinesisLogger SpadeEdgeLogger
-}
-
-func NewSpadeHandler(stats statsd.Statter, logger SpadeEdgeLogger, assigner uuid.UUIDAssigner, CORSOrigins string) *SpadeHandler {
+func NewSpadeHandler(stats statsd.Statter, loggers []SpadeEdgeLogger, assigner uuid.UUIDAssigner, CORSOrigins string) *SpadeHandler {
 	h := &SpadeHandler{
 		StatLogger:  stats,
-		EdgeLogger:  logger,
+		EdgeLoggers: loggers,
 		Assigner:    assigner,
 		Time:        time.Now,
 		corsOrigins: make(map[string]bool),
@@ -77,29 +71,6 @@ func NewSpadeHandler(stats statsd.Statter, logger SpadeEdgeLogger, assigner uuid
 	return h
 }
 
-func (a *EventLoggers) Init() {}
-
-func (a *EventLoggers) Close() {
-	a.AuditLogger.Close()
-	a.SpadeLogger.Close()
-}
-
-func (a *EventLoggers) Log(event *spade.Event) error {
-	// a.AuditLogger.Log("%s", auditTrail(event))
-
-	// logLine, err := spade.Marshal(event)
-	// if err != nil {
-	// 	return err
-	// }
-	// a.SpadeLogger.Log("%s", logLine)
-	a.KinesisLogger.Log(event)
-	return nil
-}
-
-func auditTrail(e *spade.Event) string {
-	return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid)
-}
-
 func parseLastForwarder(header string) net.IP {
 	var clientIp string
 	comma := strings.LastIndex(header, ",")
@@ -113,7 +84,6 @@ func parseLastForwarder(header string) net.IP {
 }
 
 func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestContext) int {
-	now := context.Now
 	statTimer := newTimerInstance()
 
 	xForwardedFor := r.Header.Get(context.IpHeader)
@@ -155,7 +125,7 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 	context.Timers["uuid"] = statTimer.stopTiming()
 
 	event := spade.NewEvent(
-		now,
+		context.Now,
 		clientIp,
 		xForwardedFor,
 		uuid,

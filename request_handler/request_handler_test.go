@@ -81,7 +81,9 @@ var fixedTime = time.Date(2014, 5, 2, 19, 34, 1, 0, time.UTC)
 
 func makeSpadeHandler() *SpadeHandler {
 	c, _ := statsd.NewNoop()
-	SpadeHandler := NewSpadeHandler(c, &testEdgeLogger{}, &testUUIDAssigner{}, "")
+	var loggers []SpadeEdgeLogger
+	loggers = append(loggers, &testEdgeLogger{})
+	SpadeHandler := NewSpadeHandler(c, loggers, &testUUIDAssigner{}, "")
 	SpadeHandler.Time = func() time.Time { return fixedTime }
 	return SpadeHandler
 }
@@ -127,14 +129,16 @@ func TestEndPoints(t *testing.T) {
 			uuidCounter++
 		}
 	}
-	for idx, byteLog := range SpadeHandler.EdgeLogger.(*testEdgeLogger).events {
-		var ev spade.Event
-		err := spade.Unmarshal(byteLog, &ev)
-		if err != nil {
-			t.Errorf("Expected Unmarshal to work, input: %s, err: %s", byteLog, err)
-		}
-		if !reflect.DeepEqual(ev, expectedEvents[idx]) {
-			t.Errorf("Event processed incorrectly: expected: %v got: %v", expectedEvents[idx], ev)
+	for _, logger := range SpadeHandler.EdgeLoggers {
+		for idx, byteLog := range logger.(*testEdgeLogger).events {
+			var ev spade.Event
+			err := spade.Unmarshal(byteLog, &ev)
+			if err != nil {
+				t.Errorf("Expected Unmarshal to work, input: %s, err: %s", byteLog, err)
+			}
+			if !reflect.DeepEqual(ev, expectedEvents[idx]) {
+				t.Errorf("Event processed incorrectly: expected: %v got: %v", expectedEvents[idx], ev)
+			}
 		}
 	}
 }
