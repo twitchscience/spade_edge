@@ -18,6 +18,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strconv"
@@ -234,6 +235,8 @@ func main() {
 	hystrixStreamHandler := hystrix.NewStreamHandler()
 	hystrixStreamHandler.Start()
 	go http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
+
+	go http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
 
 	// setup server and listen
 	server := &http.Server{
