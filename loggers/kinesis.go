@@ -3,6 +3,7 @@ package loggers
 import (
 	"log"
 	"math/rand"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -30,7 +31,14 @@ func NewKinesisLogger(region string, streamName string) (request_handler.SpadeEd
 	}
 
 	client := kinesis.New(auth, region)
-	config := batchproducer.DefaultConfig
+	config := batchproducer.Config{
+		AddBlocksWhenBufferFull: true,
+		BufferSize:              10000,
+		FlushInterval:           1 * time.Second,
+		BatchSize:               400,
+		MaxAttemptsPerRecord:    10,
+		Logger:                  log.New(os.Stderr, "", log.LstdFlags),
+	}
 	producer, err := batchproducer.New(client, streamName, config)
 	if err != nil {
 		return nil, err
@@ -78,7 +86,6 @@ func (ks *kinesisLogger) Log(e *spade.Event) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Event was %s", c)
 	ks.channel <- c
 	return nil
 }
