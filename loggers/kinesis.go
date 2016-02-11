@@ -19,6 +19,7 @@ type kinesisLogger struct {
 	producer  batchproducer.Producer
 	channel   chan []byte
 	waitGroup *sync.WaitGroup
+	stats     *kinesisStats
 }
 
 func NewKinesisLogger(region string, streamName string) (request_handler.SpadeEdgeLogger, error) {
@@ -30,6 +31,7 @@ func NewKinesisLogger(region string, streamName string) (request_handler.SpadeEd
 		}
 	}
 
+	stats := &kinesisStats{}
 	client := kinesis.New(auth, region)
 	config := batchproducer.Config{
 		AddBlocksWhenBufferFull: true,
@@ -38,6 +40,8 @@ func NewKinesisLogger(region string, streamName string) (request_handler.SpadeEd
 		BatchSize:               400,
 		MaxAttemptsPerRecord:    10,
 		Logger:                  log.New(os.Stderr, "", log.LstdFlags),
+		StatReceiver:            stats,
+		StatInterval:            1 * time.Second,
 	}
 	producer, err := batchproducer.New(client, streamName, config)
 	if err != nil {
@@ -54,6 +58,7 @@ func NewKinesisLogger(region string, streamName string) (request_handler.SpadeEd
 		producer:  producer,
 		channel:   channel,
 		waitGroup: waitGroup,
+		stats:     stats,
 	}
 
 	ks.start()
@@ -93,6 +98,25 @@ func (ks *kinesisLogger) Log(e *spade.Event) error {
 func (ks *kinesisLogger) Close() {
 	close(ks.channel)
 	ks.waitGroup.Wait()
+	ks.stats.Log()
 
 	ks.producer.Stop()
+}
+
+type kinesisStats struct {
+	totalKinesisErrors           int
+	totalRecordsSentSuccessfully int
+	totalRecordsDropped          int
+}
+
+func (ks *kinesisStats) Receive(sb batchproducer.StatsBatch) {
+	ks.totalKinesisErrors += sb.KinesisErrorsSinceLastStat
+	ks.totalRecordsSentSuccessfully += sb.RecordsSentSuccessfullySinceLastStat
+	ks.totalRecordsDropped += sb.RecordsDroppedSinceLastStat
+}
+
+func (ks *kinesisStats) Log() {
+	log.Println("KinesisErrors:", ks.totalKinesisErrors)
+	log.Println("Records Sent:", ks.totalRecordsSentSuccessfully)
+	log.Println("Records Dropped:", ks.totalRecordsDropped)
 }
