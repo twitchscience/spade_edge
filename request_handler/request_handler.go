@@ -2,6 +2,7 @@ package request_handler
 
 import (
 	"bytes"
+	"errors"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/twitchscience/scoop_protocol/spade"
+	"github.com/twitchscience/spade_edge/loggers"
 	"github.com/twitchscience/spade_edge/uuid"
 )
 
@@ -32,27 +34,61 @@ var (
 		}
 		return b
 	}()
-	xarth              []byte = []byte("XARTH")
-	xmlApplicationType        = mime.TypeByExtension(".xml")
-	DataFlag           []byte = []byte("data=")
+	xmlApplicationType = mime.TypeByExtension(".xml")
+
+	xarth    []byte = []byte("XARTH")
+	DataFlag []byte = []byte("data=")
 )
 
 const corsMaxAge = "86400" // One day
 
-type SpadeEdgeLogger interface {
-	Log(event *spade.Event) error
-	Close()
+type EdgeLoggers struct {
+	S3AuditLogger      loggers.SpadeEdgeLogger
+	S3EventLogger      loggers.SpadeEdgeLogger
+	KinesisEventLogger loggers.SpadeEdgeLogger
+	S3FallbackLogger   loggers.SpadeEdgeLogger
+}
+
+func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
+	auditErr := e.S3AuditLogger.Log(event)
+	eventErr := e.S3EventLogger.Log(event)
+	kinesisErr := e.KinesisEventLogger.Log(event)
+
+	var fallbackErr error
+	if kinesisErr != nil {
+		fallbackErr = e.S3FallbackLogger.Log(event)
+	}
+
+	context.recordLoggerAttempt(auditErr, "audit")
+	context.recordLoggerAttempt(eventErr, "event")
+	context.recordLoggerAttempt(kinesisErr, "kinesis")
+	context.recordLoggerAttempt(fallbackErr, "fallback")
+
+	if eventErr != nil &&
+		kinesisErr != nil &&
+		fallbackErr != nil {
+		return errors.New("Failed to store the event in any of the loggers")
+	}
+
+	return nil
+}
+
+func (e *EdgeLoggers) Close() {
+	e.KinesisEventLogger.Close()
+	e.S3FallbackLogger.Close()
+	e.S3AuditLogger.Close()
+	e.S3EventLogger.Close()
 }
 
 type SpadeHandler struct {
 	StatLogger  statsd.Statter
-	EdgeLoggers []SpadeEdgeLogger
+	EdgeLoggers *EdgeLoggers
 	Assigner    uuid.UUIDAssigner
 	Time        func() time.Time // Defaults to time.Now
 	corsOrigins map[string]bool
 }
 
-func NewSpadeHandler(stats statsd.Statter, loggers []SpadeEdgeLogger, assigner uuid.UUIDAssigner, CORSOrigins string) *SpadeHandler {
+func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, assigner uuid.UUIDAssigner, CORSOrigins string) *SpadeHandler {
 	h := &SpadeHandler{
 		StatLogger:  stats,
 		EdgeLoggers: loggers,
@@ -103,7 +139,8 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 		// application/x-www-form-urlencoded but with the Content-Type
 		// header set incorrectly... best effort here on out
 
-		b, err := ioutil.ReadAll(r.Body)
+		var b []byte
+		b, err = ioutil.ReadAll(r.Body)
 		if err != nil {
 			return http.StatusBadRequest
 		}
@@ -136,15 +173,11 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 		context.Timers["write"] = statTimer.stopTiming()
 	}()
 
-	for _, logger := range s.EdgeLoggers {
-		if err := logger.Log(event); err != nil {
-			// Important to note, since the first logger to fail will cause a return of
-			// http.StatusBadRequest, further loggers in the array will not get called but
-			// some might have completed successfully
-			return http.StatusBadRequest
-		}
-	}
+	err = s.EdgeLoggers.log(event, context)
 
+	if err != nil {
+		return http.StatusBadRequest
+	}
 	return http.StatusNoContent
 }
 

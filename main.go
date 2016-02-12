@@ -39,7 +39,9 @@ Example: http://www.twitch.tv https://www.twitch.tv
 Empty ignores CORS.`)
 
 	event_log_name      = flag.String("event_log_name", "", "Name of the event log (or none)")
+	event_error_queue   = flag.String("event_error_queue", "", "SQS queue to log event log uploader errors (or none)")
 	audit_log_name      = flag.String("audit_log_name", "", "Name of the audit log (or none)")
+	audit_error_queue   = flag.String("audit_error_queue", "", "SQS queue to log audit log uploader errors (or none)")
 	kinesis_stream_name = flag.String("kinesis_stream_name", "", "Name of kinesis stream (or none)")
 
 	maxLogLines = int(getInt64FromEnv("MAX_LOG_LINES", 1000000))                          // default 1 million
@@ -90,12 +92,18 @@ func main() {
 		aws.USWest2,
 	)
 
-	var allLoggers []request_handler.SpadeEdgeLogger
+	edgeLoggers := &request_handler.EdgeLoggers{
+		loggers.UndefinedLogger{},
+		loggers.UndefinedLogger{},
+		loggers.UndefinedLogger{},
+		loggers.UndefinedLogger{},
+	}
 
 	if len(*event_log_name) > 0 {
-		eventLogger, err := loggers.NewS3Logger(
+		edgeLoggers.S3EventLogger, err = loggers.NewS3Logger(
 			s3Connection,
 			*event_log_name,
+			*event_error_queue,
 			maxLogLines,
 			maxLogAge,
 			true,
@@ -110,15 +118,15 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error creating event logger: %v\n", err)
 		}
-		allLoggers = append(allLoggers, eventLogger)
 	} else {
 		log.Println("WARNING: No event logger specified!")
 	}
 
 	if len(*audit_log_name) > 0 {
-		auditLogger, err := loggers.NewS3Logger(
+		edgeLoggers.S3AuditLogger, err = loggers.NewS3Logger(
 			s3Connection,
 			*audit_log_name,
+			*audit_error_queue,
 			auditMaxLogLines,
 			auditMaxLogAge,
 			false,
@@ -129,23 +137,17 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error creating audit logger: %v\n", err)
 		}
-		allLoggers = append(allLoggers, auditLogger)
 	} else {
 		log.Println("WARNING: No audit logger specified!")
 	}
 
 	if len(*kinesis_stream_name) > 0 {
-		kinesisLogger, err := loggers.NewKinesisLogger("us-west-2", *kinesis_stream_name)
+		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger("us-west-2", *kinesis_stream_name)
 		if err != nil {
 			log.Fatalf("Error creating KinesisLogger %v\n", err)
 		}
-		allLoggers = append(allLoggers, kinesisLogger)
 	} else {
 		log.Println("WARNING: No kinesis logger specified!")
-	}
-
-	if len(allLoggers) == 0 {
-		log.Fatalf("No loggers specified!")
 	}
 
 	// Trigger close on receipt of SIGINT
@@ -154,10 +156,7 @@ func main() {
 		syscall.SIGINT)
 	go func() {
 		<-sigc
-		// Cause flush
-		for _, logger := range allLoggers {
-			logger.Close()
-		}
+		edgeLoggers.Close()
 		os.Exit(0)
 	}()
 
@@ -170,7 +169,7 @@ func main() {
 	// setup server and listen
 	server := &http.Server{
 		Addr:           *listen_port,
-		Handler:        request_handler.NewSpadeHandler(stats, allLoggers, request_handler.Assigner, *cors_origins),
+		Handler:        request_handler.NewSpadeHandler(stats, edgeLoggers, request_handler.Assigner, *cors_origins),
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 0.5MB

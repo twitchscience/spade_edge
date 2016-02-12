@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/twitchscience/spade_edge/loggers"
 )
 
 // TODO naming?
@@ -26,18 +27,25 @@ func (t *timerInstance) stopTiming() (r time.Duration) {
 }
 
 type requestContext struct {
-	Now       time.Time
-	Method    string
-	IpHeader  string
-	Endpoint  string
-	Timers    map[string]time.Duration
-	Status    int
-	BadClient bool
+	Now           time.Time
+	Method        string
+	IpHeader      string
+	Endpoint      string
+	Timers        map[string]time.Duration
+	FailedLoggers []string
+	Status        int
+	BadClient     bool
 }
 
 func (r *requestContext) setStatus(s int) *requestContext {
 	r.Status = s
 	return r
+}
+
+func (r *requestContext) recordLoggerAttempt(err error, name string) {
+	if err != nil && err != loggers.ErrUndefined {
+		r.FailedLoggers = append(r.FailedLoggers, name)
+	}
 }
 
 func (r *requestContext) recordStats(statter statsd.Statter) {
@@ -47,7 +55,10 @@ func (r *requestContext) recordStats(statter statsd.Statter) {
 		strconv.Itoa(r.Status),
 	}, ".")
 	for stat, duration := range r.Timers {
-		statter.Timing(prefix+"."+stat, duration.Nanoseconds(), 0.1)
+		statter.Timing(strings.Join([]string{prefix, stat}, "."), duration.Nanoseconds(), 0.1)
+	}
+	for _, logger := range r.FailedLoggers {
+		statter.Inc(strings.Join([]string{prefix, logger, "failed"}, "."), 1, 1.0)
 	}
 	if r.BadClient {
 		// We expect these to be infrequent. We may want to decreate this

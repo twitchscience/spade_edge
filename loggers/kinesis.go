@@ -11,7 +11,6 @@ import (
 	"github.com/sendgridlabs/go-kinesis"
 	"github.com/sendgridlabs/go-kinesis/batchproducer"
 	"github.com/twitchscience/scoop_protocol/spade"
-	"github.com/twitchscience/spade_edge/request_handler"
 )
 
 type kinesisLogger struct {
@@ -22,7 +21,7 @@ type kinesisLogger struct {
 	stats     *kinesisStats
 }
 
-func NewKinesisLogger(region string, streamName string) (request_handler.SpadeEdgeLogger, error) {
+func NewKinesisLogger(region string, streamName string) (SpadeEdgeLogger, error) {
 	auth, err := kinesis.NewAuthFromMetadata()
 	if err != nil {
 		auth, err = kinesis.NewAuthFromEnv()
@@ -53,7 +52,7 @@ func NewKinesisLogger(region string, streamName string) (request_handler.SpadeEd
 
 	channel := make(chan []byte)
 
-	ks := &kinesisLogger{
+	kl := &kinesisLogger{
 		client:    client,
 		producer:  producer,
 		channel:   channel,
@@ -61,23 +60,23 @@ func NewKinesisLogger(region string, streamName string) (request_handler.SpadeEd
 		stats:     stats,
 	}
 
-	ks.start()
+	kl.start()
 
-	return ks, nil
+	return kl, nil
 }
 
-func (ks *kinesisLogger) start() {
+func (kl *kinesisLogger) start() {
 	go func() {
-		ks.waitGroup.Add(1)
-		defer ks.waitGroup.Done()
+		kl.waitGroup.Add(1)
+		defer kl.waitGroup.Done()
 
 		r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-		defer ks.producer.Flush(time.Second, false)
+		defer kl.producer.Flush(time.Second, false)
 
-		for msg := range ks.channel {
+		for msg := range kl.channel {
 			key := strconv.FormatUint(uint64(r.Uint32()), 16)
-			err := ks.producer.Add(msg, key)
+			err := kl.producer.Add(msg, key)
 			if err != nil {
 				log.Printf("start Error %v", err)
 				return
@@ -86,37 +85,19 @@ func (ks *kinesisLogger) start() {
 	}()
 }
 
-func (ks *kinesisLogger) Log(e *spade.Event) error {
+func (kl *kinesisLogger) Log(e *spade.Event) error {
 	c, err := spade.Marshal(e)
 	if err != nil {
 		return err
 	}
-	ks.channel <- c
+	kl.channel <- c
 	return nil
 }
 
-func (ks *kinesisLogger) Close() {
-	close(ks.channel)
-	ks.waitGroup.Wait()
-	ks.stats.Log()
+func (kl *kinesisLogger) Close() {
+	close(kl.channel)
+	kl.waitGroup.Wait()
+	kl.stats.log()
 
-	ks.producer.Stop()
-}
-
-type kinesisStats struct {
-	totalKinesisErrors           int
-	totalRecordsSentSuccessfully int
-	totalRecordsDropped          int
-}
-
-func (ks *kinesisStats) Receive(sb batchproducer.StatsBatch) {
-	ks.totalKinesisErrors += sb.KinesisErrorsSinceLastStat
-	ks.totalRecordsSentSuccessfully += sb.RecordsSentSuccessfullySinceLastStat
-	ks.totalRecordsDropped += sb.RecordsDroppedSinceLastStat
-}
-
-func (ks *kinesisStats) Log() {
-	log.Println("KinesisErrors:", ks.totalKinesisErrors)
-	log.Println("Records Sent:", ks.totalRecordsSentSuccessfully)
-	log.Println("Records Dropped:", ks.totalRecordsDropped)
+	kl.producer.Stop()
 }

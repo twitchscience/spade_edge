@@ -6,7 +6,7 @@ cd -- "$(dirname -- "$0")"
 eval "$(curl 169.254.169.254/latest/user-data/)"
 
 export HOST="$(curl 169.254.169.254/latest/meta-data/hostname)"
-export EDGE_VERSION="1"
+export EDGE_VERSION="2"
 export CROSS_DOMAIN_LOCATION="/opt/science/spade_edge/config/crossdomain.xml"
 export STATSD_HOSTPORT="localhost:8125"
 export GOMAXPROCS="4"
@@ -24,6 +24,7 @@ source conf.sh
 exec ./spade_edge \
   -event_log_name="spade-edge-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
   -audit_log_name="spade-audits-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
+  -event_error_name="uploader-error-spade-edge-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
   -kinesis_stream_name="spade-edge-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
   -log_dir /mnt \
   -port ":80" \
