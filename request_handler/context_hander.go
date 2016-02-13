@@ -29,7 +29,7 @@ func (t *timerInstance) stopTiming() (r time.Duration) {
 type requestContext struct {
 	Now           time.Time
 	Method        string
-	IpHeader      string
+	IPHeader      string
 	Endpoint      string
 	Timers        map[string]time.Duration
 	FailedLoggers []string

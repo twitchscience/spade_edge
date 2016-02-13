@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	VERSION, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
+	version, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
 )
 
 type DummyNotifierHarness struct {
@@ -59,7 +59,7 @@ func BuildSQSNotifierHarness(name string) uploader.NotifierHarness {
 		})
 		return &SQSNotifierHarness{
 			qName:    name,
-			version:  VERSION,
+			version:  version,
 			notifier: client,
 		}
 	} else {

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type UUIDAssigner interface {
+type Assigner interface {
 	Assign() string
 }
 
@@ -21,7 +21,7 @@ type SpadeUUIDAssigner struct {
 	fixedString  string
 }
 
-func StartUUIDAssigner(host string, cluster string) UUIDAssigner {
+func StartUUIDAssigner(host string, cluster string) Assigner {
 	h := md5.New()
 	h.Write([]byte(host))
 	host = fmt.Sprintf("%08x", h.Sum(nil)[:4])

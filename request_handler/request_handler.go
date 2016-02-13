@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	Assigner uuid.UUIDAssigner = uuid.StartUUIDAssigner(
+	Assigner uuid.Assigner = uuid.StartUUIDAssigner(
 		os.Getenv("HOST"),
 		os.Getenv("CLOUD_CLUSTER"),
 	)
@@ -47,6 +47,15 @@ type EdgeLoggers struct {
 	S3EventLogger      loggers.SpadeEdgeLogger
 	KinesisEventLogger loggers.SpadeEdgeLogger
 	S3FallbackLogger   loggers.SpadeEdgeLogger
+}
+
+func NewEdgeLoggers() *EdgeLoggers {
+	return &EdgeLoggers{
+		loggers.UndefinedLogger{},
+		loggers.UndefinedLogger{},
+		loggers.UndefinedLogger{},
+		loggers.UndefinedLogger{},
+	}
 }
 
 func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
@@ -83,12 +92,12 @@ func (e *EdgeLoggers) Close() {
 type SpadeHandler struct {
 	StatLogger  statsd.Statter
 	EdgeLoggers *EdgeLoggers
-	Assigner    uuid.UUIDAssigner
+	Assigner    uuid.Assigner
 	Time        func() time.Time // Defaults to time.Now
 	corsOrigins map[string]bool
 }
 
-func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, assigner uuid.UUIDAssigner, CORSOrigins string) *SpadeHandler {
+func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, assigner uuid.Assigner, CORSOrigins string) *SpadeHandler {
 	h := &SpadeHandler{
 		StatLogger:  stats,
 		EdgeLoggers: loggers,
@@ -122,7 +131,7 @@ func parseLastForwarder(header string) net.IP {
 func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestContext) int {
 	statTimer := newTimerInstance()
 
-	xForwardedFor := r.Header.Get(context.IpHeader)
+	xForwardedFor := r.Header.Get(context.IPHeader)
 	clientIp := parseLastForwarder(xForwardedFor)
 
 	context.Timers["ip"] = statTimer.stopTiming()
@@ -182,10 +191,9 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 }
 
 const (
-	ipOverrideHeader = "X-Original-Ip"
-	ipForwardHeader  = "X-Forwarded-For"
-	badEndpoint      = "FourOhFour"
-	nTimers          = 5
+	ipForwardHeader = "X-Forwarded-For"
+	badEndpoint     = "FourOhFour"
+	nTimers         = 5
 )
 
 var allowedMethods = map[string]bool{
@@ -218,7 +226,7 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Now:       s.Time(),
 		Method:    r.Method,
 		Endpoint:  r.URL.Path,
-		IpHeader:  ipForwardHeader,
+		IPHeader:  ipForwardHeader,
 		Timers:    make(map[string]time.Duration, nTimers),
 		BadClient: false,
 	}

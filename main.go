@@ -3,13 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-
-	"github.com/afex/hystrix-go/hystrix"
-	"github.com/twitchscience/scoop_protocol/spade"
-
-	"github.com/twitchscience/spade_edge/loggers"
-	"github.com/twitchscience/spade_edge/request_handler"
-
 	"log"
 	"net"
 	"net/http"
@@ -20,29 +13,35 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/afex/hystrix-go/hystrix"
+
+	"github.com/twitchscience/scoop_protocol/spade"
+	"github.com/twitchscience/spade_edge/loggers"
+	"github.com/twitchscience/spade_edge/request_handler"
+
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/crowdmob/goamz/aws"
 	"github.com/crowdmob/goamz/s3"
 )
 
 var (
-	stats_prefix = flag.String("stat_prefix", "edge", "statsd prefix")
-	logging_dir  = flag.String("log_dir", ".", "The directory to log these files to")
-	listen_port  = flag.String(
+	statsPrefix = flag.String("stat_prefix", "edge", "statsd prefix")
+	loggingDir  = flag.String("log_dir", ".", "The directory to log these files to")
+	listenPort  = flag.String(
 		"port",
 		":8888",
 		"Which port are we listenting on form: ':<port>' e.g. :8888",
 	)
-	cors_origins = flag.String("cors_origins", "",
+	corsOrigins = flag.String("cors_origins", "",
 		`Which origins should we advertise accepting POST and GET from.
 Example: http://www.twitch.tv https://www.twitch.tv
 Empty ignores CORS.`)
 
-	event_log_name      = flag.String("event_log_name", "", "Name of the event log (or none)")
-	event_error_queue   = flag.String("event_error_queue", "", "SQS queue to log event log uploader errors (or none)")
-	audit_log_name      = flag.String("audit_log_name", "", "Name of the audit log (or none)")
-	audit_error_queue   = flag.String("audit_error_queue", "", "SQS queue to log audit log uploader errors (or none)")
-	kinesis_stream_name = flag.String("kinesis_stream_name", "", "Name of kinesis stream (or none)")
+	eventLogName      = flag.String("eventLogName", "", "Name of the event log (or none)")
+	eventErrorQueue   = flag.String("eventErrorQueue", "", "SQS queue to log event log uploader errors (or none)")
+	auditLogName      = flag.String("auditLogName", "", "Name of the audit log (or none)")
+	auditErrorQueue   = flag.String("auditErrorQueue", "", "SQS queue to log audit log uploader errors (or none)")
+	kinesisStreamName = flag.String("kinesisStreamName", "", "Name of kinesis stream (or none)")
 
 	maxLogLines = int(getInt64FromEnv("MAX_LOG_LINES", 1000000))                          // default 1 million
 	maxLogAge   = time.Duration(getInt64FromEnv("MAX_LOG_AGE_SECS", 10*60)) * time.Second // default 10 mins
@@ -64,11 +63,11 @@ func getInt64FromEnv(target string, def int64) int64 {
 	return i
 }
 
-func initStatsd(statsPrefix, statsdHostport string) (stats statsd.Statter, err error) {
+func initStatsd(statsdHostport string) (stats statsd.Statter, err error) {
 	if statsdHostport == "" {
 		stats, _ = statsd.NewNoop()
 	} else {
-		if stats, err = statsd.New(statsdHostport, *stats_prefix); err != nil {
+		if stats, err = statsd.New(statsdHostport, *statsPrefix); err != nil {
 			log.Fatalf("Statsd configuration error: %v\n", err)
 		}
 	}
@@ -78,7 +77,7 @@ func initStatsd(statsPrefix, statsdHostport string) (stats statsd.Statter, err e
 func main() {
 	flag.Parse()
 
-	stats, err := initStatsd(*stats_prefix, os.Getenv("STATSD_HOSTPORT"))
+	stats, err := initStatsd(os.Getenv("STATSD_HOSTPORT"))
 	if err != nil {
 		log.Fatalf("Statsd configuration error: %v\n", err)
 	}
@@ -92,24 +91,20 @@ func main() {
 		aws.USWest2,
 	)
 
-	edgeLoggers := &request_handler.EdgeLoggers{
-		loggers.UndefinedLogger{},
-		loggers.UndefinedLogger{},
-		loggers.UndefinedLogger{},
-		loggers.UndefinedLogger{},
-	}
+	edgeLoggers := request_handler.NewEdgeLoggers()
 
-	if len(*event_log_name) > 0 {
+	if len(*eventLogName) > 0 {
 		edgeLoggers.S3EventLogger, err = loggers.NewS3Logger(
 			s3Connection,
-			*event_log_name,
-			*event_error_queue,
+			*eventLogName,
+			*eventErrorQueue,
 			maxLogLines,
 			maxLogAge,
 			true,
-			*logging_dir,
+			*loggingDir,
 			func(e *spade.Event) (string, error) {
-				b, err := spade.Marshal(e)
+				var b []byte
+				b, err = spade.Marshal(e)
 				if err != nil {
 					return "", err
 				}
@@ -122,15 +117,15 @@ func main() {
 		log.Println("WARNING: No event logger specified!")
 	}
 
-	if len(*audit_log_name) > 0 {
+	if len(*auditLogName) > 0 {
 		edgeLoggers.S3AuditLogger, err = loggers.NewS3Logger(
 			s3Connection,
-			*audit_log_name,
-			*audit_error_queue,
+			*auditLogName,
+			*auditErrorQueue,
 			auditMaxLogLines,
 			auditMaxLogAge,
 			false,
-			*logging_dir,
+			*loggingDir,
 			func(e *spade.Event) (string, error) {
 				return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid), nil
 			})
@@ -141,8 +136,8 @@ func main() {
 		log.Println("WARNING: No audit logger specified!")
 	}
 
-	if len(*kinesis_stream_name) > 0 {
-		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger("us-west-2", *kinesis_stream_name)
+	if len(*kinesisStreamName) > 0 {
+		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger("us-west-2", *kinesisStreamName)
 		if err != nil {
 			log.Fatalf("Error creating KinesisLogger %v\n", err)
 		}
@@ -162,14 +157,14 @@ func main() {
 
 	hystrixStreamHandler := hystrix.NewStreamHandler()
 	hystrixStreamHandler.Start()
-	go http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
+	go func() { _ = http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler) }()
 
-	go http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
+	go func() { _ = http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux) }()
 
 	// setup server and listen
 	server := &http.Server{
-		Addr:           *listen_port,
-		Handler:        request_handler.NewSpadeHandler(stats, edgeLoggers, request_handler.Assigner, *cors_origins),
+		Addr:           *listenPort,
+		Handler:        request_handler.NewSpadeHandler(stats, edgeLoggers, request_handler.Assigner, *corsOrigins),
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 0.5MB
