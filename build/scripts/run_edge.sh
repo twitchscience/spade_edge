@@ -14,7 +14,6 @@ export CONFIG_PREFIX="s3://$S3_CONFIG_BUCKET/$VPC_SUBNET_TAG/$CLOUD_APP/$CLOUD_E
 CORS_ORIGINS=""  # Often overridden in conf.sh
 aws s3 cp --region us-west-2 "$CONFIG_PREFIX/conf.sh" conf.sh
 source conf.sh
-aws s3 cp --region us-west-2 "$CONFIG_PREFIX/loggers.json" loggers.json
 
 # Optional config, often set in conf.sh
 # export MAX_LOG_LINES=1000000  # 1 million

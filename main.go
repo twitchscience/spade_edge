@@ -37,11 +37,13 @@ var (
 Example: http://www.twitch.tv https://www.twitch.tv
 Empty ignores CORS.`)
 
-	eventLogName      = flag.String("eventLogName", "", "Name of the event log (or none)")
-	eventErrorQueue   = flag.String("eventErrorQueue", "", "SQS queue to log event log uploader errors (or none)")
-	auditLogName      = flag.String("auditLogName", "", "Name of the audit log (or none)")
-	auditErrorQueue   = flag.String("auditErrorQueue", "", "SQS queue to log audit log uploader errors (or none)")
-	kinesisStreamName = flag.String("kinesisStreamName", "", "Name of kinesis stream (or none)")
+	eventLogName       = flag.String("event_log_name", "", "Name of the event log (or none)")
+	eventErrorQueue    = flag.String("event_error_name", "", "SQS queue to log event log uploader errors (or none)")
+	auditLogName       = flag.String("audit_log_name", "", "Name of the audit log (or none)")
+	auditErrorQueue    = flag.String("audit_error_name", "", "SQS queue to log audit log uploader errors (or none)")
+	kinesisStreamName  = flag.String("kinesis_stream_name", "", "Name of kinesis stream (or none)")
+	fallbackLogName    = flag.String("fallback_log_name", "", "Name of the fallback log (or none)")
+	fallbackErrorQueue = flag.String("fallback_error_name", "", "SQS queue to log fallback log uploader errors (or none)")
 
 	maxLogLines = int(getInt64FromEnv("MAX_LOG_LINES", 1000000))                          // default 1 million
 	maxLogAge   = time.Duration(getInt64FromEnv("MAX_LOG_AGE_SECS", 10*60)) * time.Second // default 10 mins
@@ -143,6 +145,25 @@ func main() {
 		}
 	} else {
 		log.Println("WARNING: No kinesis logger specified!")
+	}
+
+	if len(*fallbackLogName) > 0 {
+		edgeLoggers.S3FallbackLogger, err = loggers.NewS3Logger(
+			s3Connection,
+			*fallbackLogName,
+			*fallbackErrorQueue,
+			maxLogLines,
+			maxLogAge,
+			false,
+			*loggingDir,
+			func(e *spade.Event) (string, error) {
+				return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid), nil
+			})
+		if err != nil {
+			log.Fatalf("Error creating audit logger: %v\n", err)
+		}
+	} else {
+		log.Println("WARNING: No audit logger specified!")
 	}
 
 	// Trigger close on receipt of SIGINT
