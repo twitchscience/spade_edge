@@ -23,9 +23,11 @@ source conf.sh
 
 exec ./spade_edge \
   -event_log_name="spade-edge-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
-  -audit_log_name="spade-audits-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
   -event_error_name="uploader-error-spade-edge-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
+  -audit_log_name="spade-audits-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
   -kinesis_stream_name="spade-edge-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
+  -fallback_log_name="spade-fallback-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
+  -fallback_error_name="uploader-error-spade-fallback-${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT:-$USER-dev}}" \
   -log_dir /mnt \
   -port ":80" \
   -cors_origins "${CORS_ORIGINS}" \
