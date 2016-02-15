@@ -163,7 +163,7 @@ func TestHandle(t *testing.T) {
 			Now:      epoch,
 			Method:   req.Method,
 			Endpoint: req.URL.Path,
-			IpHeader: ipForwardHeader,
+			IPHeader: ipForwardHeader,
 			Timers:   make(map[string]time.Duration, nTimers),
 		}
 		status := SpadeHandler.serve(testrecorder, req, context)
