@@ -21,7 +21,7 @@ type kinesisLogger struct {
 	stats     *kinesisStats
 }
 
-func NewKinesisLogger(region string, streamName string) (SpadeEdgeLogger, error) {
+func NewKinesisLogger(region, streamName string) (SpadeEdgeLogger, error) {
 	auth, err := kinesis.NewAuthFromMetadata()
 	if err != nil {
 		auth, err = kinesis.NewAuthFromEnv()

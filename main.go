@@ -178,9 +178,19 @@ func main() {
 
 	hystrixStreamHandler := hystrix.NewStreamHandler()
 	hystrixStreamHandler.Start()
-	go func() { _ = http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler) }()
+	go func() {
+		err := http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
+		if err != nil {
+			log.Printf("Error listening to port 81 with hystrixStreamHandler %v\n", err)
+		}
+	}()
 
-	go func() { _ = http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux) }()
+	go func() {
+		err := http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
+		if err != nil {
+			log.Printf("Error listening to port 8082 with http.DefaultServeMux %v\n", err)
+		}
+	}()
 
 	// setup server and listen
 	server := &http.Server{

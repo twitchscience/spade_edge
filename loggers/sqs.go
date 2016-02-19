@@ -48,6 +48,8 @@ func (s *SQSNotifierHarness) SendMessage(message *uploader.UploadReceipt) error 
 	return s.notifier.SendMessage("edge", s.qName, s.version, message.KeyName)
 }
 
+// BuildSQSNotifierHarness will return a valid SQS notifier for the queue name passed. If no
+// queue name is passed a DummyNotifierHarness will be returned instead
 func BuildSQSNotifierHarness(name string) uploader.NotifierHarness {
 	if len(name) > 0 {
 		client := notifier.DefaultClient
