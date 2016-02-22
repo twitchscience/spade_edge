@@ -1,6 +1,7 @@
 package loggers
 
 import (
+	"errors"
 	"log"
 	"math/rand"
 	"os"
@@ -17,6 +18,7 @@ type kinesisLogger struct {
 	client    *kinesis.Kinesis
 	producer  batchproducer.Producer
 	channel   chan []byte
+	errors    chan error
 	waitGroup *sync.WaitGroup
 	stats     *kinesisStats
 }
@@ -51,11 +53,13 @@ func NewKinesisLogger(region, streamName string) (SpadeEdgeLogger, error) {
 	producer.Start()
 
 	channel := make(chan []byte)
+	errors := make(chan error)
 
 	kl := &kinesisLogger{
 		client:    client,
 		producer:  producer,
 		channel:   channel,
+		errors:    errors,
 		waitGroup: waitGroup,
 		stats:     stats,
 	}
@@ -73,13 +77,14 @@ func (kl *kinesisLogger) start() {
 		r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 		defer kl.producer.Flush(time.Second, false)
+		defer close(kl.errors)
 
 		for msg := range kl.channel {
 			key := strconv.FormatUint(uint64(r.Uint32()), 16)
 			err := kl.producer.Add(msg, key)
 			if err != nil {
-				log.Printf("start Error %v", err)
-				return
+				log.Printf("Error adding msg to kinesis producer queue %v", err)
+				kl.errors <- err
 			}
 		}
 	}()
@@ -90,7 +95,19 @@ func (kl *kinesisLogger) Log(e *spade.Event) error {
 	if err != nil {
 		return err
 	}
-	kl.channel <- c
+
+	var ok bool
+	select {
+	case err, ok = <-kl.errors:
+		if ok {
+			return err
+		} else {
+			return errors.New("Processing halted")
+		}
+
+	case kl.channel <- c:
+	}
+
 	return nil
 }
 
