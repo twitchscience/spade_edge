@@ -18,36 +18,50 @@ type s3Logger struct {
 	eventToStringFunc EventToStringFunc
 }
 
+type S3LoggerConfig struct {
+	Bucket       string
+	SuccessQueue string
+	ErrorQueue   string
+	LoggingDir   string
+	MaxLines     int
+	MaxAge       time.Duration
+}
+
 func NewS3Logger(
 	s3Connection *s3.S3,
-	name string,
-	errorQueueName string,
-	maxLogLines int,
-	maxLogAge time.Duration,
-	notify bool,
-	loggingDir string,
+	config S3LoggerConfig,
 	printFunc EventToStringFunc,
 ) (SpadeEdgeLogger, error) {
+	var (
+		successNotifier uploader.NotifierHarness      = &DummyNotifierHarness{}
+		errorNotifier   uploader.ErrorNotifierHarness = &DummyNotifierHarness{}
+	)
 
-	rotateCoordinator := gologging.NewRotateCoordinator(maxLogLines, maxLogAge)
-	loggingInfo := key_name_generator.BuildInstanceInfo(&key_name_generator.EnvInstanceFetcher{}, name, loggingDir)
-	var notifierHarness uploader.NotifierHarness = &DummyNotifierHarness{}
-	if notify {
-		notifierHarness = BuildSQSNotifierHarness(name)
+	if len(config.SuccessQueue) > 0 {
+		successNotifier = BuildSQSNotifierHarness(config.SuccessQueue)
 	}
 
-	eventBucket := s3Connection.Bucket(name)
+	if len(config.ErrorQueue) > 0 {
+		errorNotifier = BuildSQSErrorHarness(config.ErrorQueue)
+	}
+
+	rotateCoordinator := gologging.NewRotateCoordinator(config.MaxLines, config.MaxAge)
+	loggingInfo := key_name_generator.BuildInstanceInfo(&key_name_generator.EnvInstanceFetcher{}, config.Bucket, config.LoggingDir)
+
+	eventBucket := s3Connection.Bucket(config.Bucket)
 	eventBucket.PutBucket(s3.BucketOwnerFull)
+
+	s3Uploader := &uploader.S3UploaderBuilder{
+		Bucket:           eventBucket,
+		KeyNameGenerator: &key_name_generator.EdgeKeyNameGenerator{Info: loggingInfo},
+	}
 
 	uploadLogger, err := gologging.StartS3Logger(
 		rotateCoordinator,
 		loggingInfo,
-		notifierHarness,
-		&uploader.S3UploaderBuilder{
-			Bucket:           eventBucket,
-			KeyNameGenerator: &key_name_generator.EdgeKeyNameGenerator{Info: loggingInfo},
-		},
-		BuildSQSErrorHarness(errorQueueName),
+		successNotifier,
+		s3Uploader,
+		errorNotifier,
 		2,
 	)
 

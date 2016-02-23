@@ -76,6 +76,15 @@ func initStatsd(statsdHostport string) (stats statsd.Statter, err error) {
 	return
 }
 
+func marshallingLoggingFunc(e *spade.Event) (string, error) {
+	var b []byte
+	b, err := spade.Marshal(e)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s", b), nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -94,24 +103,18 @@ func main() {
 	)
 
 	edgeLoggers := request_handler.NewEdgeLoggers()
-
 	if len(*eventLogName) > 0 {
 		edgeLoggers.S3EventLogger, err = loggers.NewS3Logger(
 			s3Connection,
-			*eventLogName,
-			*eventErrorQueue,
-			maxLogLines,
-			maxLogAge,
-			true,
-			*loggingDir,
-			func(e *spade.Event) (string, error) {
-				var b []byte
-				b, err = spade.Marshal(e)
-				if err != nil {
-					return "", err
-				}
-				return fmt.Sprintf("%s", b), nil
-			})
+			loggers.S3LoggerConfig{
+				Bucket:       *eventLogName,
+				SuccessQueue: *eventLogName,
+				ErrorQueue:   *eventErrorQueue,
+				LoggingDir:   *loggingDir,
+				MaxLines:     maxLogLines,
+				MaxAge:       maxLogAge,
+			},
+			marshallingLoggingFunc)
 		if err != nil {
 			log.Fatalf("Error creating event logger: %v\n", err)
 		}
@@ -122,12 +125,13 @@ func main() {
 	if len(*auditLogName) > 0 {
 		edgeLoggers.S3AuditLogger, err = loggers.NewS3Logger(
 			s3Connection,
-			*auditLogName,
-			*auditErrorQueue,
-			auditMaxLogLines,
-			auditMaxLogAge,
-			false,
-			*loggingDir,
+			loggers.S3LoggerConfig{
+				Bucket:     *auditLogName,
+				ErrorQueue: *auditErrorQueue,
+				LoggingDir: *loggingDir,
+				MaxLines:   auditMaxLogLines,
+				MaxAge:     auditMaxLogAge,
+			},
 			func(e *spade.Event) (string, error) {
 				return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid), nil
 			})
@@ -150,20 +154,19 @@ func main() {
 	if len(*fallbackLogName) > 0 {
 		edgeLoggers.S3FallbackLogger, err = loggers.NewS3Logger(
 			s3Connection,
-			*fallbackLogName,
-			*fallbackErrorQueue,
-			maxLogLines,
-			maxLogAge,
-			false,
-			*loggingDir,
-			func(e *spade.Event) (string, error) {
-				return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid), nil
-			})
+			loggers.S3LoggerConfig{
+				Bucket:     *fallbackLogName,
+				ErrorQueue: *fallbackErrorQueue,
+				LoggingDir: *loggingDir,
+				MaxLines:   maxLogLines,
+				MaxAge:     maxLogAge,
+			},
+			marshallingLoggingFunc)
 		if err != nil {
-			log.Fatalf("Error creating audit logger: %v\n", err)
+			log.Fatalf("Error creating fallback logger: %v\n", err)
 		}
 	} else {
-		log.Println("WARNING: No audit logger specified!")
+		log.Println("WARNING: No fallback logger specified!")
 	}
 
 	// Trigger close on receipt of SIGINT
