@@ -2,10 +2,9 @@ package loggers
 
 import (
 	"errors"
+	"fmt"
 	"log"
-	"math/rand"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -17,13 +16,28 @@ import (
 type kinesisLogger struct {
 	client    *kinesis.Kinesis
 	producer  batchproducer.Producer
-	channel   chan []byte
+	channel   chan *spade.Event
 	errors    chan error
 	waitGroup *sync.WaitGroup
 	stats     *kinesisStats
+	fallback  SpadeEdgeLogger
 }
 
-func NewKinesisLogger(region, streamName string) (SpadeEdgeLogger, error) {
+type KinesisLoggerConfig struct {
+	Region               string
+	StreamName           string
+	BatchSize            int
+	BufferSize           int
+	FlushInterval        string
+	MaxAttemptsPerRecord int
+}
+
+func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger) (SpadeEdgeLogger, error) {
+	flushInterval, err := time.ParseDuration(config.FlushInterval)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing %s as a time.Duration: %v", config.FlushInterval, err)
+	}
+
 	auth, err := kinesis.NewAuthFromMetadata()
 	if err != nil {
 		auth, err = kinesis.NewAuthFromEnv()
@@ -33,18 +47,18 @@ func NewKinesisLogger(region, streamName string) (SpadeEdgeLogger, error) {
 	}
 
 	stats := &kinesisStats{}
-	client := kinesis.New(auth, region)
-	config := batchproducer.Config{
+	client := kinesis.New(auth, config.Region)
+	producerConfig := batchproducer.Config{
 		AddBlocksWhenBufferFull: true,
-		BufferSize:              10000,
-		FlushInterval:           1 * time.Second,
-		BatchSize:               400,
-		MaxAttemptsPerRecord:    10,
+		BufferSize:              config.BufferSize,
+		FlushInterval:           flushInterval,
+		BatchSize:               config.BatchSize,
+		MaxAttemptsPerRecord:    config.MaxAttemptsPerRecord,
 		Logger:                  log.New(os.Stderr, "", log.LstdFlags),
 		StatReceiver:            stats,
 		StatInterval:            1 * time.Second,
 	}
-	producer, err := batchproducer.New(client, streamName, config)
+	producer, err := batchproducer.New(client, config.StreamName, producerConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +66,7 @@ func NewKinesisLogger(region, streamName string) (SpadeEdgeLogger, error) {
 
 	producer.Start()
 
-	channel := make(chan []byte)
+	channel := make(chan *spade.Event)
 	errors := make(chan error)
 
 	kl := &kinesisLogger{
@@ -62,6 +76,7 @@ func NewKinesisLogger(region, streamName string) (SpadeEdgeLogger, error) {
 		errors:    errors,
 		waitGroup: waitGroup,
 		stats:     stats,
+		fallback:  fallback,
 	}
 
 	kl.start()
@@ -69,49 +84,73 @@ func NewKinesisLogger(region, streamName string) (SpadeEdgeLogger, error) {
 	return kl, nil
 }
 
+func (kl *kinesisLogger) logToKinesis(e *spade.Event) error {
+	data, err := spade.Marshal(e)
+	if err != nil {
+		return fmt.Errorf("error marshaling spade event: %v", err)
+	}
+
+	err = kl.producer.Add(data, e.Uuid)
+	if err != nil {
+		return fmt.Errorf("error submitting event to kinesis producer: %v", err)
+	}
+
+	return nil
+}
+
+func (kl *kinesisLogger) logToFallback(e *spade.Event) error {
+	err := kl.fallback.Log(e)
+	if err != nil {
+		return fmt.Errorf("error logging to fallback logger %v", err)
+	}
+	return nil
+}
+
 func (kl *kinesisLogger) start() {
 	go func() {
 		kl.waitGroup.Add(1)
 		defer kl.waitGroup.Done()
 
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
-
 		defer kl.producer.Flush(time.Second, false)
 		defer close(kl.errors)
 
-		for msg := range kl.channel {
-			key := strconv.FormatUint(uint64(r.Uint32()), 16)
-			err := kl.producer.Add(msg, key)
+		for e := range kl.channel {
+			err := kl.logToKinesis(e)
 			if err != nil {
-				log.Printf("Error adding msg to kinesis producer queue %v", err)
+				log.Println(err)
 				kl.errors <- err
+
+				err = kl.logToFallback(e)
+				if err != nil {
+					log.Println(err)
+					kl.errors <- err
+				}
+
+				// Only accept one error
+				return
 			}
 		}
 	}()
 }
 
 func (kl *kinesisLogger) Log(e *spade.Event) error {
-	c, err := spade.Marshal(e)
-	if err != nil {
-		return err
-	}
-
-	var ok bool
 	select {
-	case err, ok = <-kl.errors:
+	case err, ok := <-kl.errors:
 		if ok {
 			return err
 		} else {
 			return errors.New("Processing halted")
 		}
 
-	case kl.channel <- c:
+	case kl.channel <- e:
 	}
 
 	return nil
 }
 
 func (kl *kinesisLogger) Close() {
+	kl.fallback.Close()
+
 	close(kl.channel)
 	kl.waitGroup.Wait()
 	kl.stats.log()

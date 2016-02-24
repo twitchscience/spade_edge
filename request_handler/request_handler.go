@@ -46,12 +46,10 @@ type EdgeLoggers struct {
 	S3AuditLogger      loggers.SpadeEdgeLogger
 	S3EventLogger      loggers.SpadeEdgeLogger
 	KinesisEventLogger loggers.SpadeEdgeLogger
-	S3FallbackLogger   loggers.SpadeEdgeLogger
 }
 
 func NewEdgeLoggers() *EdgeLoggers {
 	return &EdgeLoggers{
-		loggers.UndefinedLogger{},
 		loggers.UndefinedLogger{},
 		loggers.UndefinedLogger{},
 		loggers.UndefinedLogger{},
@@ -63,19 +61,12 @@ func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
 	eventErr := e.S3EventLogger.Log(event)
 	kinesisErr := e.KinesisEventLogger.Log(event)
 
-	var fallbackErr error
-	if kinesisErr != nil {
-		fallbackErr = e.S3FallbackLogger.Log(event)
-	}
-
 	context.recordLoggerAttempt(auditErr, "audit")
 	context.recordLoggerAttempt(eventErr, "event")
 	context.recordLoggerAttempt(kinesisErr, "kinesis")
-	context.recordLoggerAttempt(fallbackErr, "fallback")
 
 	if eventErr != nil &&
-		kinesisErr != nil &&
-		fallbackErr != nil {
+		kinesisErr != nil {
 		return errors.New("Failed to store the event in any of the loggers")
 	}
 
@@ -84,7 +75,6 @@ func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
 
 func (e *EdgeLoggers) Close() {
 	e.KinesisEventLogger.Close()
-	e.S3FallbackLogger.Close()
 	e.S3AuditLogger.Close()
 	e.S3EventLogger.Close()
 }
@@ -97,7 +87,7 @@ type SpadeHandler struct {
 	corsOrigins map[string]bool
 }
 
-func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, assigner uuid.Assigner, CORSOrigins string) *SpadeHandler {
+func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, assigner uuid.Assigner, CORSOrigins []string) *SpadeHandler {
 	h := &SpadeHandler{
 		StatLogger:  stats,
 		EdgeLoggers: loggers,
@@ -106,8 +96,7 @@ func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, assigner uuid.A
 		corsOrigins: make(map[string]bool),
 	}
 
-	origins := strings.Split(strings.TrimSpace(CORSOrigins), " ")
-	for _, origin := range origins {
+	for _, origin := range CORSOrigins {
 		trimmedOrigin := strings.TrimSpace(origin)
 		if trimmedOrigin != "" {
 			h.corsOrigins[trimmedOrigin] = true

@@ -83,7 +83,7 @@ func makeSpadeHandler() *SpadeHandler {
 	c, _ := statsd.NewNoop()
 	loggers := NewEdgeLoggers()
 	loggers.S3EventLogger = &testEdgeLogger{}
-	SpadeHandler := NewSpadeHandler(c, loggers, &testUUIDAssigner{}, "")
+	SpadeHandler := NewSpadeHandler(c, loggers, &testUUIDAssigner{}, []string{""})
 	SpadeHandler.Time = func() time.Time { return fixedTime }
 	return SpadeHandler
 }
