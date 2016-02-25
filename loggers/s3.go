@@ -12,6 +12,9 @@ import (
 	"github.com/twitchscience/scoop_protocol/spade"
 )
 
+// EventToStringFunc is the prototype of a function that takes a
+// spade event and converts it to a string for logging into a
+// line based file on s3
 type EventToStringFunc func(*spade.Event) (string, error)
 
 type s3Logger struct {
@@ -19,6 +22,8 @@ type s3Logger struct {
 	eventToStringFunc EventToStringFunc
 }
 
+// S3LoggerConfig is used to configure a new SpadeEdgeLogger that writes
+// lines of text to AWS S3
 type S3LoggerConfig struct {
 	Bucket       string
 	SuccessQueue string `json:",omitempty"`
@@ -27,6 +32,8 @@ type S3LoggerConfig struct {
 	MaxAge       string
 }
 
+// NewS3Logger returns a new SpadeEdgeLogger that events to S3 after
+// transforming the events into lines of text using the printFunc
 func NewS3Logger(
 	s3Connection *s3.S3,
 	config S3LoggerConfig,
@@ -44,18 +51,25 @@ func NewS3Logger(
 	}
 
 	if len(config.SuccessQueue) > 0 {
-		successNotifier = BuildSQSNotifierHarness(config.SuccessQueue)
+		successNotifier = buildSQSNotifierHarness(config.SuccessQueue)
 	}
 
 	if len(config.ErrorQueue) > 0 {
-		errorNotifier = BuildSQSErrorHarness(config.ErrorQueue)
+		errorNotifier = buildSQSErrorHarness(config.ErrorQueue)
 	}
 
 	rotateCoordinator := gologging.NewRotateCoordinator(config.MaxLines, maxAge)
 	loggingInfo := key_name_generator.BuildInstanceInfo(&key_name_generator.EnvInstanceFetcher{}, config.Bucket, loggingDir)
 
 	eventBucket := s3Connection.Bucket(config.Bucket)
-	eventBucket.PutBucket(s3.BucketOwnerFull)
+	if eventBucket == nil {
+		return nil, fmt.Errorf("Failed to access S3 bucket '%s'", config.Bucket)
+	}
+
+	err = eventBucket.PutBucket(s3.BucketOwnerFull)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get full access to bucket '%s': %v", config.Bucket, err)
+	}
 
 	s3Uploader := &uploader.S3UploaderBuilder{
 		Bucket:           eventBucket,

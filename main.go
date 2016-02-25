@@ -9,7 +9,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -17,7 +16,8 @@ import (
 
 	"github.com/twitchscience/scoop_protocol/spade"
 	"github.com/twitchscience/spade_edge/loggers"
-	"github.com/twitchscience/spade_edge/request_handler"
+	"github.com/twitchscience/spade_edge/requests"
+	"github.com/twitchscience/spade_edge/uuid"
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/crowdmob/goamz/aws"
@@ -27,18 +27,6 @@ import (
 var (
 	configFilename = flag.String("config", "conf.json", "name of config file")
 )
-
-func getInt64FromEnv(target string, def int64) int64 {
-	env := os.Getenv(target)
-	if env == "" {
-		return def
-	}
-	i, err := strconv.ParseInt(env, 10, 64)
-	if err != nil {
-		return def
-	}
-	return i
-}
 
 func initStatsd(statsdHostport string) (stats statsd.Statter, err error) {
 	if statsdHostport == "" {
@@ -81,7 +69,7 @@ func main() {
 		aws.USWest2,
 	)
 
-	edgeLoggers := request_handler.NewEdgeLoggers()
+	edgeLoggers := requests.NewEdgeLoggers()
 	if config.EventsLogger != nil {
 		edgeLoggers.S3EventLogger, err = loggers.NewS3Logger(
 			s3Connection,
@@ -159,10 +147,15 @@ func main() {
 		}
 	}()
 
+	uuidAssigner := uuid.StartUUIDAssigner(
+		os.Getenv("HOST"),
+		os.Getenv("CLOUD_CLUSTER"),
+	)
+
 	// setup server and listen
 	server := &http.Server{
 		Addr:           config.Port,
-		Handler:        request_handler.NewSpadeHandler(stats, edgeLoggers, request_handler.Assigner, config.CorsOrigins),
+		Handler:        requests.NewSpadeHandler(stats, edgeLoggers, uuidAssigner, config.CorsOrigins),
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 0.5MB

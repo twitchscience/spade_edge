@@ -1,4 +1,4 @@
-package request_handler
+package requests
 
 import (
 	"strconv"

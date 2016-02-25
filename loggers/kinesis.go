@@ -23,6 +23,8 @@ type kinesisLogger struct {
 	fallback  SpadeEdgeLogger
 }
 
+// KinesisLoggerConfig is used to configure a new SpadeEdgeLogger that writes to
+// an AWS Kinesis stream
 type KinesisLoggerConfig struct {
 	Region               string
 	StreamName           string
@@ -32,6 +34,7 @@ type KinesisLoggerConfig struct {
 	MaxAttemptsPerRecord int
 }
 
+// NewKinesisLogger creates a new SpadeEdgeLogger that writes to an AWS Kinesis stream
 func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger) (SpadeEdgeLogger, error) {
 	flushInterval, err := time.ParseDuration(config.FlushInterval)
 	if err != nil {
@@ -64,7 +67,10 @@ func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger) (Spa
 	}
 	waitGroup := &sync.WaitGroup{}
 
-	producer.Start()
+	err = producer.Start()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to start the kinesis producer: %v", err)
+	}
 
 	channel := make(chan *spade.Event)
 	errors := make(chan error)
@@ -111,7 +117,13 @@ func (kl *kinesisLogger) start() {
 		kl.waitGroup.Add(1)
 		defer kl.waitGroup.Done()
 
-		defer kl.producer.Flush(time.Second, false)
+		defer func() {
+			_, _, err := kl.producer.Flush(time.Second, false)
+			if err != nil {
+				log.Println("Error flushing kinesis producer", err)
+			}
+		}()
+
 		defer close(kl.errors)
 
 		for e := range kl.channel {
@@ -138,9 +150,8 @@ func (kl *kinesisLogger) Log(e *spade.Event) error {
 	case err, ok := <-kl.errors:
 		if ok {
 			return err
-		} else {
-			return errors.New("Processing halted")
 		}
+		return errors.New("Processing halted")
 
 	case kl.channel <- e:
 	}
@@ -155,5 +166,8 @@ func (kl *kinesisLogger) Close() {
 	kl.waitGroup.Wait()
 	kl.stats.log()
 
-	kl.producer.Stop()
+	err := kl.producer.Stop()
+	if err != nil {
+		log.Printf("Error stopping kinesis producer: %v", err)
+	}
 }

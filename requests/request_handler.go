@@ -1,4 +1,4 @@
-package request_handler
+package requests
 
 import (
 	"bytes"
@@ -19,11 +19,7 @@ import (
 )
 
 var (
-	Assigner uuid.Assigner = uuid.StartUUIDAssigner(
-		os.Getenv("HOST"),
-		os.Getenv("CLOUD_CLUSTER"),
-	)
-	xDomainContents []byte = func() []byte {
+	xDomainContents = func() []byte {
 		filename := os.Getenv("CROSS_DOMAIN_LOCATION")
 		if filename == "" {
 			filename = "../build/config/crossdomain.xml"
@@ -35,19 +31,21 @@ var (
 		return b
 	}()
 	xmlApplicationType = mime.TypeByExtension(".xml")
-
-	xarth    []byte = []byte("XARTH")
-	DataFlag []byte = []byte("data=")
+	xarth              = []byte("XARTH")
+	dataFlag           = []byte("data=")
 )
 
 const corsMaxAge = "86400" // One day
 
+// EdgeLoggers represent the different kind of loggers for Spade events
 type EdgeLoggers struct {
 	S3AuditLogger      loggers.SpadeEdgeLogger
 	S3EventLogger      loggers.SpadeEdgeLogger
 	KinesisEventLogger loggers.SpadeEdgeLogger
 }
 
+// NewEdgeLoggers returns a new instance of an EdgeLoggers struct pre-filled
+// wuth UndefinedLogger logger instances
 func NewEdgeLoggers() *EdgeLoggers {
 	return &EdgeLoggers{
 		loggers.UndefinedLogger{},
@@ -73,12 +71,14 @@ func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
 	return nil
 }
 
+// Close closes the loggers
 func (e *EdgeLoggers) Close() {
 	e.KinesisEventLogger.Close()
 	e.S3AuditLogger.Close()
 	e.S3EventLogger.Close()
 }
 
+// SpadeHandler handles http requets and forwards them to the EdgeLoggers
 type SpadeHandler struct {
 	StatLogger  statsd.Statter
 	EdgeLoggers *EdgeLoggers
@@ -87,6 +87,7 @@ type SpadeHandler struct {
 	corsOrigins map[string]bool
 }
 
+// NewSpadeHandler returns a new instance of SpadeHandler
 func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, assigner uuid.Assigner, CORSOrigins []string) *SpadeHandler {
 	h := &SpadeHandler{
 		StatLogger:  stats,
@@ -106,22 +107,22 @@ func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, assigner uuid.A
 }
 
 func parseLastForwarder(header string) net.IP {
-	var clientIp string
+	var clientIP string
 	comma := strings.LastIndex(header, ",")
 	if comma > -1 && comma < len(header)+1 {
-		clientIp = header[comma+1:]
+		clientIP = header[comma+1:]
 	} else {
-		clientIp = header
+		clientIP = header
 	}
 
-	return net.ParseIP(strings.TrimSpace(clientIp))
+	return net.ParseIP(strings.TrimSpace(clientIP))
 }
 
-func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestContext) int {
+func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestContext) int {
 	statTimer := newTimerInstance()
 
 	xForwardedFor := r.Header.Get(context.IPHeader)
-	clientIp := parseLastForwarder(xForwardedFor)
+	clientIP := parseLastForwarder(xForwardedFor)
 
 	context.Timers["ip"] = statTimer.stopTiming()
 
@@ -142,7 +143,7 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 		if err != nil {
 			return http.StatusBadRequest
 		}
-		if bytes.Equal(b[:5], DataFlag) {
+		if bytes.Equal(b[:5], dataFlag) {
 			context.BadClient = true
 			b = b[5:]
 		}
@@ -161,7 +162,7 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 
 	event := spade.NewEvent(
 		context.Now,
-		clientIp,
+		clientIP,
 		xForwardedFor,
 		uuid,
 		data,
@@ -240,11 +241,11 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 		return http.StatusOK
 	// Accepted tracking endpoints.
 	case "/":
-		status = s.HandleSpadeRequests(r, context)
+		status = s.handleSpadeRequests(r, context)
 	case "/track":
-		status = s.HandleSpadeRequests(r, context)
+		status = s.handleSpadeRequests(r, context)
 	case "/track/":
-		status = s.HandleSpadeRequests(r, context)
+		status = s.handleSpadeRequests(r, context)
 	// dont track everything else
 	default:
 		context.Endpoint = badEndpoint

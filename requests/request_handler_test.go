@@ -1,10 +1,11 @@
-package request_handler
+package requests
 
 import (
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/twitchscience/scoop_protocol/spade"
+	"github.com/twitchscience/spade_edge/uuid"
 )
 
 type testEdgeLogger struct {
@@ -189,8 +191,13 @@ func isEndpointGood(endpoint string) bool {
 }
 
 func BenchmarkUUIDAssigner(b *testing.B) {
+	uuidAssigner := uuid.StartUUIDAssigner(
+		os.Getenv("HOST"),
+		os.Getenv("CLOUD_CLUSTER"),
+	)
+
 	for i := 0; i < b.N; i++ {
-		Assigner.Assign()
+		uuidAssigner.Assign()
 	}
 	b.ReportAllocs()
 
