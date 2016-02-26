@@ -19,21 +19,23 @@ import (
 )
 
 var (
-	xDomainContents = func() []byte {
-		filename := os.Getenv("CROSS_DOMAIN_LOCATION")
-		if filename == "" {
-			filename = "../build/config/crossdomain.xml"
-		}
-		b, err := ioutil.ReadFile(filename)
-		if err != nil {
-			log.Fatalln("Cross domain file not found: ", err)
-		}
-		return b
-	}()
+	xDomainContents    []byte
 	xmlApplicationType = mime.TypeByExtension(".xml")
 	xarth              = []byte("XARTH")
 	dataFlag           = []byte("data=")
 )
+
+func init() {
+	f := os.Getenv("CROSS_DOMAIN_LOCATION")
+	if len(f) == 0 {
+		f = "../build/config/crossdomain.xml"
+	}
+	var err error
+	xDomainContents, err = ioutil.ReadFile(f)
+	if err != nil {
+		log.Fatalln("Cross domain file not found: ", err)
+	}
+}
 
 const corsMaxAge = "86400" // One day
 

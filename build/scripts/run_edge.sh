@@ -14,4 +14,4 @@ export CONFIG_PREFIX="s3://$S3_CONFIG_BUCKET/$VPC_SUBNET_TAG/$CLOUD_APP/${CLOUD_
 CORS_ORIGINS=""  # Often overridden in conf.sh
 aws s3 cp --region us-west-2 "$CONFIG_PREFIX/conf.json" conf.json
 
-exec ./spade_edge
+exec ./spade_edge -config conf.json

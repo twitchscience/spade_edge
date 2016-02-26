@@ -12,10 +12,10 @@ var config struct {
 	LoggingDir     string
 	Port           string
 	CorsOrigins    []string
-	EventsLogger   *loggers.S3LoggerConfig      `json:",omitempty"`
-	AuditsLogger   *loggers.S3LoggerConfig      `json:",omitempty"`
-	FallbackLogger *loggers.S3LoggerConfig      `json:",omitempty"`
-	EventStream    *loggers.KinesisLoggerConfig `json:",omitempty"`
+	EventsLogger   *loggers.S3LoggerConfig
+	AuditsLogger   *loggers.S3LoggerConfig
+	FallbackLogger *loggers.S3LoggerConfig
+	EventStream    *loggers.KinesisLoggerConfig
 }
 
 func loadConfig(filename string) error {

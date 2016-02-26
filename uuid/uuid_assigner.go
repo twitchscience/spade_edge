@@ -57,19 +57,25 @@ func StartUUIDAssigner(host string, cluster string) Assigner {
 	return a
 }
 
-func (a *SpadeUUIDAssigner) makeID(currentTimeHex, countHex string, buf *bytes.Buffer) {
+func (a *SpadeUUIDAssigner) makeID(currentTimeHex, countHex string, buf *bytes.Buffer) (err error) {
 	buf.Reset()
-	_, _ = buf.WriteString(a.fixedString)
-	_, _ = buf.WriteString(currentTimeHex)
-	_, _ = buf.WriteString("-")
-	_, _ = buf.WriteString(countHex)
+	_, err = buf.WriteString(a.fixedString)
+	_, err = buf.WriteString(currentTimeHex)
+	_, err = buf.WriteString("-")
+	_, err = buf.WriteString(countHex)
+
+	return err
 }
 
 func (a *SpadeUUIDAssigner) crank() {
 	currentTimeHex := strconv.FormatInt(time.Now().Unix(), 16)
 	countHex := strconv.FormatUint(a.count, 16)
 	buf := bytes.NewBuffer(make([]byte, 0, 34))
-	a.makeID(currentTimeHex, countHex, buf)
+	err := a.makeID(currentTimeHex, countHex, buf)
+	if err != nil {
+		log.Printf("Error creating UUID %v", err)
+	}
+
 	for {
 		select {
 		case <-a.secondTicker:
@@ -78,7 +84,10 @@ func (a *SpadeUUIDAssigner) crank() {
 		case a.assign <- buf.String():
 			a.count++
 			countHex := strconv.FormatUint(a.count, 16)
-			a.makeID(currentTimeHex, countHex, buf)
+			err = a.makeID(currentTimeHex, countHex, buf)
+			if err != nil {
+				log.Printf("Error creating UUID %v", err)
+			}
 		}
 	}
 }

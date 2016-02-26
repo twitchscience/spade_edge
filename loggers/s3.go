@@ -12,9 +12,8 @@ import (
 	"github.com/twitchscience/scoop_protocol/spade"
 )
 
-// EventToStringFunc is the prototype of a function that takes a
-// spade event and converts it to a string for logging into a
-// line based file on s3
+// An EventToStringFunc takes a spade event and converts it
+//to a string for logging into a line oriented file on s3
 type EventToStringFunc func(*spade.Event) (string, error)
 
 type s3Logger struct {
@@ -22,12 +21,12 @@ type s3Logger struct {
 	eventToStringFunc EventToStringFunc
 }
 
-// S3LoggerConfig is used to configure a new SpadeEdgeLogger that writes
+// S3LoggerConfig configures a new SpadeEdgeLogger that writes
 // lines of text to AWS S3
 type S3LoggerConfig struct {
 	Bucket       string
-	SuccessQueue string `json:",omitempty"`
-	ErrorQueue   string `json:",omitempty"`
+	SuccessQueue string
+	ErrorQueue   string
 	MaxLines     int
 	MaxAge       string
 }
@@ -68,7 +67,7 @@ func NewS3Logger(
 
 	err = eventBucket.PutBucket(s3.BucketOwnerFull)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get full access to bucket '%s': %v", config.Bucket, err)
+		return nil, fmt.Errorf("Error creating S3 bucket '%s': %v", config.Bucket, err)
 	}
 
 	s3Uploader := &uploader.S3UploaderBuilder{
