@@ -1,224 +1,124 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
-
-	"github.com/afex/hystrix-go/hystrix"
-	"github.com/twitchscience/aws_utils/environment"
-	"github.com/twitchscience/aws_utils/notifier"
-	"github.com/twitchscience/aws_utils/uploader"
-
-	"github.com/twitchscience/gologging/gologging"
-	gen "github.com/twitchscience/gologging/key_name_generator"
-	"github.com/twitchscience/spade_edge/kafka_logger"
-	"github.com/twitchscience/spade_edge/request_handler"
-
 	"log"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
+
+	"github.com/afex/hystrix-go/hystrix"
+
+	"github.com/twitchscience/scoop_protocol/spade"
+	"github.com/twitchscience/spade_edge/loggers"
+	"github.com/twitchscience/spade_edge/requests"
+	"github.com/twitchscience/spade_edge/uuid"
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/crowdmob/goamz/aws"
 	"github.com/crowdmob/goamz/s3"
 )
 
-const (
-	auditBucketName = "spade-audits"
-	eventBucketName = "spade-edge"
-)
-
 var (
-	CLOUD_ENV    = environment.GetCloudEnv()
-	stats_prefix = flag.String("stat_prefix", "edge", "statsd prefix")
-	logging_dir  = flag.String("log_dir", ".", "The directory to log these files to")
-	listen_port  = flag.String(
-		"port",
-		":8888",
-		"Which port are we listenting on form: ':<port>' e.g. :8888",
-	)
-	cors_origins = flag.String("cors_origins", "",
-		`Which origins should we advertise accepting POST and GET from.
-Example: http://www.twitch.tv https://www.twitch.tv
-Empty ignores CORS.`)
-	brokers = flag.String("kafka_brokers", "",
-		`<host>:<port>,<host>:<port>,... of kafka brokers.
-		Can leave empty if not using`)
-	clientId   = flag.String("client_id", "", "id of this client.")
-	VERSION, _ = strconv.Atoi(os.Getenv("EDGE_VERSION"))
-
-	maxLogLines = int(getInt64FromEnv("MAX_LOG_LINES", 1000000))                          // default 1 million
-	maxLogAge   = time.Duration(getInt64FromEnv("MAX_LOG_AGE_SECS", 10*60)) * time.Second // default 10 mins
-
-	auditMaxLogLines = int(getInt64FromEnv("MAX_AUDIT_LOG_LINES", 1000000))                          // default 1 million
-	auditMaxLogAge   = time.Duration(getInt64FromEnv("MAX_AUDIT_LOG_AGE_SECS", 10*60)) * time.Second // default 10 mins
-
+	configFilename = flag.String("config", "conf.json", "name of config file")
 )
 
-func getInt64FromEnv(target string, def int64) int64 {
-	env := os.Getenv(target)
-	if env == "" {
-		return def
-	}
-	i, err := strconv.ParseInt(env, 10, 64)
-	if err != nil {
-		return def
-	}
-	return i
-}
-
-func ParseBrokerList(csv string) []string {
-	return strings.Split(csv, ",")
-}
-
-type DummyNotifierHarness struct {
-}
-type SQSNotifierHarness struct {
-	qName    string
-	version  int
-	notifier *notifier.SQSClient
-}
-type SQSErrorHarness struct {
-	qName    string
-	notifier *notifier.SQSClient
-}
-
-func (d *DummyNotifierHarness) SendMessage(r *uploader.UploadReceipt) error {
-	return nil
-}
-
-func BuildSQSNotifierHarness() *SQSNotifierHarness {
-	client := notifier.DefaultClient
-	client.Signer.RegisterMessageType("edge", func(args ...interface{}) (string, error) {
-		if len(args) < 2 {
-			return "", errors.New("Missing correct number of args ")
-		}
-		return fmt.Sprintf("{\"version\":%d,\"keyname\":%q}", args...), nil
-	})
-	return &SQSNotifierHarness{
-		qName:    fmt.Sprintf("spade-edge-%s", CLOUD_ENV),
-		version:  VERSION,
-		notifier: client,
-	}
-}
-
-func BuildSQSErrorHarness() *SQSErrorHarness {
-	return &SQSErrorHarness{
-		qName:    fmt.Sprintf("uploader-error-spade-edge-%s", CLOUD_ENV),
-		notifier: notifier.DefaultClient,
-	}
-}
-
-func (s *SQSErrorHarness) SendError(er error) {
-	err := s.notifier.SendMessage("error", s.qName, er)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
-func (s *SQSNotifierHarness) SendMessage(message *uploader.UploadReceipt) error {
-	return s.notifier.SendMessage("edge", s.qName, s.version, message.KeyName)
-}
-
-func initStatsd(statsPrefix, statsdHostport string) (stats statsd.Statter, err error) {
+func initStatsd(statsdHostport string) (stats statsd.Statter, err error) {
 	if statsdHostport == "" {
 		stats, _ = statsd.NewNoop()
 	} else {
-		if stats, err = statsd.New(statsdHostport, *stats_prefix); err != nil {
-			log.Fatalf("Statsd configuration error: %v", err)
+		if stats, err = statsd.New(statsdHostport, config.StatsdPrefix); err != nil {
+			log.Fatalf("Statsd configuration error: %v\n", err)
 		}
 	}
 	return
 }
 
+func marshallingLoggingFunc(e *spade.Event) (string, error) {
+	var b []byte
+	b, err := spade.Marshal(e)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s", b), nil
+}
+
 func main() {
 	flag.Parse()
-
-	stats, err := initStatsd(*stats_prefix, os.Getenv("STATSD_HOSTPORT"))
+	err := loadConfig(*configFilename)
 	if err != nil {
-		log.Fatalf("Statsd configuration error: %v", err)
+		log.Fatalln("Error loading config", err)
+	}
+
+	stats, err := initStatsd(os.Getenv("STATSD_HOSTPORT"))
+	if err != nil {
+		log.Fatalf("Statsd configuration error: %v\n", err)
 	}
 
 	auth, err := aws.GetAuth("", "", "", time.Now())
 	if err != nil {
 		log.Fatalln("Failed to recieve auth from env")
 	}
-	awsConnection := s3.New(
+	s3Connection := s3.New(
 		auth,
 		aws.USWest2,
 	)
 
-	auditBucket := awsConnection.Bucket(auditBucketName + "-" + CLOUD_ENV)
-	auditBucket.PutBucket(s3.BucketOwnerFull)
-	eventBucket := awsConnection.Bucket(eventBucketName + "-" + CLOUD_ENV)
-	eventBucket.PutBucket(s3.BucketOwnerFull)
-
-	auditInfo := gen.BuildInstanceInfo(&gen.EnvInstanceFetcher{}, "spade_edge_audit", *logging_dir)
-	loggingInfo := gen.BuildInstanceInfo(&gen.EnvInstanceFetcher{}, "spade_edge", *logging_dir)
-
-	auditRotateCoordinator := gologging.NewRotateCoordinator(auditMaxLogLines, auditMaxLogAge)
-	loggingRotateCoordinator := gologging.NewRotateCoordinator(maxLogLines, maxLogAge)
-
-	auditLogger, err := gologging.StartS3Logger(
-		auditRotateCoordinator,
-		auditInfo,
-		&DummyNotifierHarness{},
-		&uploader.S3UploaderBuilder{
-			Bucket:           auditBucket,
-			KeyNameGenerator: &gen.EdgeKeyNameGenerator{Info: auditInfo},
-		},
-		BuildSQSErrorHarness(),
-		2,
-	)
-	if err != nil {
-		log.Fatalf("Got Error while building audit: %s\n", err)
-	}
-
-	spadeEventLogger, err := gologging.StartS3Logger(
-		loggingRotateCoordinator,
-		loggingInfo,
-		BuildSQSNotifierHarness(),
-		&uploader.S3UploaderBuilder{
-			Bucket:           eventBucket,
-			KeyNameGenerator: &gen.EdgeKeyNameGenerator{Info: loggingInfo},
-		},
-		BuildSQSErrorHarness(),
-		2,
-	)
-	if err != nil {
-		log.Fatalf("Got Error while building logger: %s\n", err)
-	}
-
-	// Initialize Loggers.
-	// AuditLogger writes to the audit log, for analysis of system success rate.
-	// SpadeLogger writes requests to a file for processing by the spade processor.
-	// K(afka)Logger writes produces messages for kafka, currently in dark launch.
-	// We allow the klogger to be null incase we boot up with an unresponsive kafka cluster.
-	var logger *request_handler.EventLoggers
-	brokerList := ParseBrokerList(*brokers)
-	klogger, err := kafka_logger.NewKafkaLogger(*clientId, brokerList)
-	if err == nil {
-		klogger.(*kafka_logger.KafkaLogger).Init()
-		logger = &request_handler.EventLoggers{
-			AuditLogger: auditLogger,
-			SpadeLogger: spadeEventLogger,
-			KLogger:     klogger,
+	edgeLoggers := requests.NewEdgeLoggers()
+	if config.EventsLogger != nil {
+		edgeLoggers.S3EventLogger, err = loggers.NewS3Logger(
+			s3Connection,
+			*config.EventsLogger,
+			config.LoggingDir,
+			marshallingLoggingFunc)
+		if err != nil {
+			log.Fatalf("Error creating event logger: %v\n", err)
 		}
 	} else {
-		log.Printf("Got Error while building logger: %s + %v\nUsing Nop Logger\n", err, brokerList)
-		logger = &request_handler.EventLoggers{
-			AuditLogger: auditLogger,
-			SpadeLogger: spadeEventLogger,
-			KLogger:     &request_handler.NoopLogger{},
+		log.Println("WARNING: No event logger specified!")
+	}
+
+	if config.AuditsLogger != nil {
+		edgeLoggers.S3AuditLogger, err = loggers.NewS3Logger(
+			s3Connection,
+			*config.AuditsLogger,
+			config.LoggingDir,
+			func(e *spade.Event) (string, error) {
+				return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid), nil
+			})
+		if err != nil {
+			log.Fatalf("Error creating audit logger: %v\n", err)
 		}
+	} else {
+		log.Println("WARNING: No audit logger specified!")
+	}
+
+	if config.EventStream != nil {
+		var fallbackLogger loggers.SpadeEdgeLogger = loggers.UndefinedLogger{}
+		if config.FallbackLogger != nil {
+			fallbackLogger, err = loggers.NewS3Logger(
+				s3Connection,
+				*config.FallbackLogger,
+				config.LoggingDir,
+				marshallingLoggingFunc)
+			if err != nil {
+				log.Fatalf("Error creating fallback logger: %v\n", err)
+			}
+		} else {
+			log.Println("WARNING: No fallback logger specified!")
+		}
+
+		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger(*config.EventStream, fallbackLogger)
+		if err != nil {
+			log.Fatalf("Error creating KinesisLogger %v\n", err)
+		}
+	} else {
+		log.Println("WARNING: No kinesis logger specified!")
 	}
 
 	// Trigger close on receipt of SIGINT
@@ -227,21 +127,35 @@ func main() {
 		syscall.SIGINT)
 	go func() {
 		<-sigc
-		// Cause flush
-		logger.Close()
+		edgeLoggers.Close()
 		os.Exit(0)
 	}()
 
 	hystrixStreamHandler := hystrix.NewStreamHandler()
 	hystrixStreamHandler.Start()
-	go http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
+	go func() {
+		err := http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
+		if err != nil {
+			log.Printf("Error listening to port 81 with hystrixStreamHandler %v\n", err)
+		}
+	}()
 
-	go http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
+	go func() {
+		err := http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
+		if err != nil {
+			log.Printf("Error listening to port 8082 with http.DefaultServeMux %v\n", err)
+		}
+	}()
+
+	uuidAssigner := uuid.StartUUIDAssigner(
+		os.Getenv("HOST"),
+		os.Getenv("CLOUD_CLUSTER"),
+	)
 
 	// setup server and listen
 	server := &http.Server{
-		Addr:           *listen_port,
-		Handler:        request_handler.NewSpadeHandler(stats, logger, request_handler.Assigner, *cors_origins),
+		Addr:           config.Port,
+		Handler:        requests.NewSpadeHandler(stats, edgeLoggers, uuidAssigner, config.CorsOrigins),
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 0.5MB
