@@ -67,7 +67,9 @@ func NewS3Logger(
 
 	err = eventBucket.PutBucket(s3.BucketOwnerFull)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating S3 bucket '%s': %v", config.Bucket, err)
+		if err.Error() != "Your previous request to create the named bucket succeeded and you already own it." {
+			return nil, fmt.Errorf("Error creating S3 bucket '%s': %v", config.Bucket, err)
+		}
 	}
 
 	s3Uploader := &uploader.S3UploaderBuilder{
