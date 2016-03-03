@@ -93,13 +93,13 @@ func (a *EventLoggers) Close() {
 }
 
 func (a *EventLoggers) Log(event *spade.Event) error {
-	a.AuditLogger.Log("%s", auditTrail(event))
+	a.AuditLogger.Log(fmt.Sprintf("%s", auditTrail(event)))
 
 	logLine, err := spade.Marshal(event)
 	if err != nil {
 		return err
 	}
-	a.SpadeLogger.Log("%s", logLine)
+	a.SpadeLogger.Log(fmt.Sprintf("%s", logLine))
 	a.KLogger.Log(event)
 	return nil
 }
@@ -130,6 +130,11 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 
 	err := r.ParseForm()
 	if err != nil {
+		if err.Error() == "http: request body too large" {
+			s.StatLogger.Inc("large_request", 1, 1.0)
+			log.Printf("Request larger than %d bytes, rejecting.", maxBytesPerRequest)
+			return http.StatusRequestEntityTooLarge
+		}
 		return http.StatusBadRequest
 	}
 
@@ -142,6 +147,11 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
+			if err.Error() == "http: request body too large" {
+				s.StatLogger.Inc("large_request", 1, 1.0)
+				log.Printf("Request larger than %d bytes, rejecting.", maxBytesPerRequest)
+				return http.StatusRequestEntityTooLarge
+			}
 			return http.StatusBadRequest
 		}
 		if bytes.Equal(b[:5], DataFlag) {
@@ -179,10 +189,11 @@ func (s *SpadeHandler) HandleSpadeRequests(r *http.Request, context *requestCont
 }
 
 const (
-	ipOverrideHeader = "X-Original-Ip"
-	ipForwardHeader  = "X-Forwarded-For"
-	badEndpoint      = "FourOhFour"
-	nTimers          = 5
+	ipOverrideHeader   = "X-Original-Ip"
+	ipForwardHeader    = "X-Forwarded-For"
+	badEndpoint        = "FourOhFour"
+	nTimers            = 5
+	maxBytesPerRequest = 500 * 1024
 )
 
 var allowedMethods = map[string]bool{
@@ -193,6 +204,7 @@ var allowedMethods = map[string]bool{
 var allowedMethodsHeader string // Comma-separated version of allowedMethods
 
 func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytesPerRequest)
 	if !allowedMethods[r.Method] {
 		w.WriteHeader(http.StatusBadRequest)
 		return

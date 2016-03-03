@@ -58,6 +58,25 @@ func (t *testUUIDAssigner) Assign() string {
 	return fmt.Sprintf("%d", t.i)
 }
 
+func TestTooBigRequest(t *testing.T) {
+	SpadeHandler := makeSpadeHandler()
+	testrecorder := httptest.NewRecorder()
+	req, err := http.NewRequest(
+		"POST",
+		"http://spade.example.com/",
+		strings.NewReader(fmt.Sprintf("data=%s", longJson)),
+	)
+	if err != nil {
+		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
+	}
+	req.Header.Add("X-Forwarded-For", "222.222.222.222")
+	SpadeHandler.ServeHTTP(testrecorder, req)
+
+	if testrecorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("%s expected code %d not %d\n", "/", http.StatusRequestEntityTooLarge, testrecorder.Code)
+	}
+}
+
 func TestParseLastForwarder(t *testing.T) {
 	var testHeaders = []struct {
 		input    string
@@ -218,6 +237,7 @@ func BenchmarkRequests(b *testing.B) {
 }
 
 var (
+	longJson     = `{"event":"` + strings.Repeat("BigData", 700000) + `"}`
 	testRequests = []testTuple{
 		testTuple{
 			Request: testRequest{
