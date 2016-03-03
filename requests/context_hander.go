@@ -55,14 +55,14 @@ func (r *requestContext) recordStats(statter statsd.Statter) {
 		strconv.Itoa(r.Status),
 	}, ".")
 	for stat, duration := range r.Timers {
-		statter.Timing(strings.Join([]string{prefix, stat}, "."), duration.Nanoseconds(), 0.1)
+		_ = statter.Timing(strings.Join([]string{prefix, stat}, "."), duration.Nanoseconds(), 0.1)
 	}
 	for _, logger := range r.FailedLoggers {
-		statter.Inc(strings.Join([]string{prefix, logger, "failed"}, "."), 1, 1.0)
+		_ = statter.Inc(strings.Join([]string{prefix, logger, "failed"}, "."), 1, 1.0)
 	}
 	if r.BadClient {
 		// We expect these to be infrequent. We may want to decreate this
 		// if it turns out not to be the case
-		statter.Inc("bad_client", 1, 1.0)
+		_ = statter.Inc("bad_client", 1, 1.0)
 	}
 }

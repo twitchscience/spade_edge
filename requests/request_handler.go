@@ -232,12 +232,18 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 	switch r.URL.Path {
 	case "/crossdomain.xml":
 		w.Header().Add("Content-Type", xmlApplicationType)
-		w.Write(xDomainContents)
+		_, err := w.Write(xDomainContents)
+		if err != nil {
+			return http.StatusInternalServerError
+		}
 		return http.StatusOK
 	case "/healthcheck":
 		status = http.StatusOK
 	case "/xarth":
-		w.Write(xarth)
+		_, err := w.Write(xarth)
+		if err != nil {
+			return http.StatusInternalServerError
+		}
 		return http.StatusOK
 	// Accepted tracking endpoints.
 	case "/":
