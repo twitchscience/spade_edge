@@ -26,12 +26,13 @@ type kinesisLogger struct {
 // KinesisLoggerConfig is used to configure a new SpadeEdgeLogger that writes to
 // an AWS Kinesis stream
 type KinesisLoggerConfig struct {
-	Region               string
-	StreamName           string
-	BatchSize            int
-	BufferSize           int
-	FlushInterval        string
-	MaxAttemptsPerRecord int
+	Region                 string
+	StreamName             string
+	BatchSize              int
+	BufferSize             int
+	FlushInterval          string
+	MaxAttemptsPerRecord   int
+	PreProducerChannelSize int
 }
 
 // NewKinesisLogger creates a new SpadeEdgeLogger that writes to an AWS Kinesis stream
@@ -72,7 +73,7 @@ func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger) (Spa
 		return nil, fmt.Errorf("Failed to start the kinesis producer: %v", err)
 	}
 
-	channel := make(chan *spade.Event)
+	channel := make(chan *spade.Event, config.PreProducerChannelSize)
 	errors := make(chan error)
 
 	kl := &kinesisLogger{
@@ -145,15 +146,26 @@ func (kl *kinesisLogger) start() {
 	}()
 }
 
+// Log will attempt to queue up an event to be published into Kinesis.
+// If an error is returned, the caller should assume the event was dropped
 func (kl *kinesisLogger) Log(e *spade.Event) error {
 	select {
+	// First priority is to bubble out existing errors
 	case err, ok := <-kl.errors:
 		if ok {
 			return err
 		}
 		return errors.New("Processing halted")
 
+	// Submit event to channel
 	case kl.channel <- e:
+
+	// No errors were returned, but channel is full
+	default:
+		err := kl.logToFallback(e)
+		if err != nil {
+			return fmt.Errorf("producer channel was full and fallback failed with %v", err)
+		}
 	}
 
 	return nil
