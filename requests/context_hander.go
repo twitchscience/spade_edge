@@ -61,8 +61,6 @@ func (r *requestContext) recordStats(statter statsd.Statter) {
 		_ = statter.Inc(strings.Join([]string{prefix, logger, "failed"}, "."), 1, 1.0)
 	}
 	if r.BadClient {
-		// We expect these to be infrequent. We may want to decreate this
-		// if it turns out not to be the case
 		_ = statter.Inc("bad_client", 1, 1.0)
 	}
 }

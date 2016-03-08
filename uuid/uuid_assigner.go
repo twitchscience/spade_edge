@@ -60,9 +60,15 @@ func StartUUIDAssigner(host string, cluster string) Assigner {
 func (a *SpadeUUIDAssigner) makeID(currentTimeHex, countHex string, buf *bytes.Buffer) (err error) {
 	buf.Reset()
 	_, err = buf.WriteString(a.fixedString)
-	_, err = buf.WriteString(currentTimeHex)
-	_, err = buf.WriteString("-")
-	_, err = buf.WriteString(countHex)
+	if err == nil {
+		_, err = buf.WriteString(currentTimeHex)
+	}
+	if err == nil {
+		_, err = buf.WriteString("-")
+	}
+	if err == nil {
+		_, err = buf.WriteString(countHex)
+	}
 
 	return err
 }

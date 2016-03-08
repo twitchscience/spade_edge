@@ -78,7 +78,7 @@ func (e *EdgeLoggers) Close() {
 	e.S3EventLogger.Close()
 }
 
-// SpadeHandler handles http requets and forwards them to the EdgeLoggers
+// SpadeHandler handles http requests and forwards them to the EdgeLoggers
 type SpadeHandler struct {
 	StatLogger  statsd.Statter
 	EdgeLoggers *EdgeLoggers
@@ -234,6 +234,7 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 		w.Header().Add("Content-Type", xmlApplicationType)
 		_, err := w.Write(xDomainContents)
 		if err != nil {
+			log.Printf("Unable to write crossdomain.xml contents: %v", err)
 			return http.StatusInternalServerError
 		}
 		return http.StatusOK
@@ -242,6 +243,7 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 	case "/xarth":
 		_, err := w.Write(xarth)
 		if err != nil {
+			log.Printf("Error writing XARTH response: %v", err)
 			return http.StatusInternalServerError
 		}
 		return http.StatusOK

@@ -30,8 +30,12 @@ var (
 )
 
 func initStatsd(statsdHostport, prefix string) (stats statsd.Statter, err error) {
-	if len(statsdHostport) == 0 || len(prefix) == 0 {
+	if len(statsdHostport) == 0 {
 		stats, _ = statsd.NewNoop()
+		log.Println("WARNING: No statsd host:port specified, disabling metric statsd!")
+	} else if len(prefix) == 0 {
+		stats, _ = statsd.NewNoop()
+		log.Println("WARNING: No statsd prefix specified, disabling metric statsd!")
 	} else {
 		if stats, err = statsd.New(statsdHostport, prefix); err != nil {
 			log.Fatalf("Statsd configuration error: %v\n", err)
