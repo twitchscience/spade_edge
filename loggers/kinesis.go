@@ -8,19 +8,23 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/sendgridlabs/go-kinesis"
 	"github.com/sendgridlabs/go-kinesis/batchproducer"
 	"github.com/twitchscience/scoop_protocol/spade"
 )
 
+const kinesisStatsPrefix = "logger.kinesis."
+
 type kinesisLogger struct {
-	client    *kinesis.Kinesis
-	producer  batchproducer.Producer
-	channel   chan *spade.Event
-	errors    chan error
-	waitGroup *sync.WaitGroup
-	stats     *kinesisStats
-	fallback  SpadeEdgeLogger
+	client       *kinesis.Kinesis
+	producer     batchproducer.Producer
+	channel      chan *spade.Event
+	errors       chan error
+	waitGroup    *sync.WaitGroup
+	statReceiver *kinesisStats
+	statter      statsd.Statter
+	fallback     SpadeEdgeLogger
 }
 
 // KinesisLoggerConfig is used to configure a new SpadeEdgeLogger that writes to
@@ -36,7 +40,7 @@ type KinesisLoggerConfig struct {
 }
 
 // NewKinesisLogger creates a new SpadeEdgeLogger that writes to an AWS Kinesis stream
-func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger) (SpadeEdgeLogger, error) {
+func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger, statter statsd.Statter) (SpadeEdgeLogger, error) {
 	flushInterval, err := time.ParseDuration(config.FlushInterval)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing %s as a time.Duration: %v", config.FlushInterval, err)
@@ -50,7 +54,9 @@ func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger) (Spa
 		}
 	}
 
-	stats := &kinesisStats{}
+	statReceiver := &kinesisStats{
+		statter: statter,
+	}
 	client := kinesis.New(auth, config.Region)
 	producerConfig := batchproducer.Config{
 		AddBlocksWhenBufferFull: true,
@@ -59,7 +65,7 @@ func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger) (Spa
 		BatchSize:               config.BatchSize,
 		MaxAttemptsPerRecord:    config.MaxAttemptsPerRecord,
 		Logger:                  log.New(os.Stderr, "", log.LstdFlags),
-		StatReceiver:            stats,
+		StatReceiver:            statReceiver,
 		StatInterval:            1 * time.Second,
 	}
 	producer, err := batchproducer.New(client, config.StreamName, producerConfig)
@@ -77,13 +83,14 @@ func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger) (Spa
 	errors := make(chan error)
 
 	kl := &kinesisLogger{
-		client:    client,
-		producer:  producer,
-		channel:   channel,
-		errors:    errors,
-		waitGroup: waitGroup,
-		stats:     stats,
-		fallback:  fallback,
+		client:       client,
+		producer:     producer,
+		channel:      channel,
+		errors:       errors,
+		waitGroup:    waitGroup,
+		statter:      statter,
+		statReceiver: statReceiver,
+		fallback:     fallback,
 	}
 
 	kl.start()
@@ -98,7 +105,9 @@ func (kl *kinesisLogger) logToKinesis(e *spade.Event) error {
 	}
 
 	err = kl.producer.Add(data, e.Uuid)
+	_ = kl.statter.Inc(kinesisStatsPrefix+"producer.added", 1, 1.0)
 	if err != nil {
+		_ = kl.statter.Inc(kinesisStatsPrefix+"producer.errors", 1, 1.0)
 		return fmt.Errorf("error submitting event to kinesis producer: %v", err)
 	}
 
@@ -107,7 +116,9 @@ func (kl *kinesisLogger) logToKinesis(e *spade.Event) error {
 
 func (kl *kinesisLogger) logToFallback(e *spade.Event) error {
 	err := kl.fallback.Log(e)
+	_ = kl.statter.Inc(kinesisStatsPrefix+"fallback.added", 1, 1.0)
 	if err != nil {
+		_ = kl.statter.Inc(kinesisStatsPrefix+"fallback.errors", 1, 1.0)
 		return fmt.Errorf("error logging to fallback logger %v", err)
 	}
 	return nil
@@ -138,9 +149,6 @@ func (kl *kinesisLogger) start() {
 					log.Println(err)
 					kl.errors <- err
 				}
-
-				// Only accept one error
-				return
 			}
 		}
 	}()
@@ -152,6 +160,7 @@ func (kl *kinesisLogger) Log(e *spade.Event) error {
 	select {
 	// First priority is to bubble out existing errors
 	case err, ok := <-kl.errors:
+		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.errors", 1, 1.0)
 		if ok {
 			return err
 		}
@@ -159,9 +168,11 @@ func (kl *kinesisLogger) Log(e *spade.Event) error {
 
 	// Submit event to channel
 	case kl.channel <- e:
+		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.submitted", 1, 1.0)
 
 	// No errors were returned, but channel is full
 	default:
+		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.buffer_full", 1, 1.0)
 		err := kl.logToFallback(e)
 		if err != nil {
 			return fmt.Errorf("producer channel was full and fallback failed with %v", err)
@@ -176,7 +187,7 @@ func (kl *kinesisLogger) Close() {
 
 	close(kl.channel)
 	kl.waitGroup.Wait()
-	kl.stats.log()
+	kl.statReceiver.log()
 
 	err := kl.producer.Stop()
 	if err != nil {

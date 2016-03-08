@@ -8,7 +8,6 @@ import (
 )
 
 var config struct {
-	StatsdPrefix   string
 	LoggingDir     string
 	Port           string
 	CorsOrigins    []string

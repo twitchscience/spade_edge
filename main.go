@@ -26,13 +26,14 @@ import (
 
 var (
 	configFilename = flag.String("config", "conf.json", "name of config file")
+	statsdPrefix   = flag.String("stat_prefix", "", "statsd prefix")
 )
 
-func initStatsd(statsdHostport string) (stats statsd.Statter, err error) {
-	if statsdHostport == "" {
+func initStatsd(statsdHostport, prefix string) (stats statsd.Statter, err error) {
+	if len(statsdHostport) == 0 || len(prefix) == 0 {
 		stats, _ = statsd.NewNoop()
 	} else {
-		if stats, err = statsd.New(statsdHostport, config.StatsdPrefix); err != nil {
+		if stats, err = statsd.New(statsdHostport, prefix); err != nil {
 			log.Fatalf("Statsd configuration error: %v\n", err)
 		}
 	}
@@ -55,7 +56,7 @@ func main() {
 		log.Fatalln("Error loading config", err)
 	}
 
-	stats, err := initStatsd(os.Getenv("STATSD_HOSTPORT"))
+	stats, err := initStatsd(os.Getenv("STATSD_HOSTPORT"), *statsdPrefix)
 	if err != nil {
 		log.Fatalf("Statsd configuration error: %v\n", err)
 	}
@@ -113,7 +114,7 @@ func main() {
 			log.Println("WARNING: No fallback logger specified!")
 		}
 
-		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger(*config.EventStream, fallbackLogger)
+		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger(*config.EventStream, fallbackLogger, stats)
 		if err != nil {
 			log.Fatalf("Error creating KinesisLogger %v\n", err)
 		}
