@@ -15,6 +15,7 @@ USE_PRIVATE_IP=${7:-"false"}
 
 export GOARCH=amd64
 export GOOS=linux
+export GO15VENDOREXPERIMENT=0
 
 SEEKER_DEBIAN="http://science.twitch.tv/debs/seeker_1.0.3_amd64.deb"
 

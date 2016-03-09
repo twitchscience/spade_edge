@@ -4,14 +4,18 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 )
 
-type UUIDAssigner interface {
+// Assigner is an interface used to assign UUIDs
+type Assigner interface {
 	Assign() string
 }
 
+// SpadeUUIDAssigner implements the Assigner interface to create
+// uuids for spade events
 type SpadeUUIDAssigner struct {
 	host         string
 	cluster      string
@@ -21,13 +25,24 @@ type SpadeUUIDAssigner struct {
 	fixedString  string
 }
 
-func StartUUIDAssigner(host string, cluster string) UUIDAssigner {
+// StartUUIDAssigner starts up a go routine that creates UUIDs
+func StartUUIDAssigner(host string, cluster string) Assigner {
 	h := md5.New()
-	h.Write([]byte(host))
+	_, err := h.Write([]byte(host))
+	if err != nil {
+		log.Printf("Error writing to md5 hash: %v", err)
+		return nil
+	}
+
 	host = fmt.Sprintf("%08x", h.Sum(nil)[:4])
 
 	h = md5.New()
-	h.Write([]byte(cluster))
+	_, err = h.Write([]byte(cluster))
+	if err != nil {
+		log.Printf("Error writing to md5 hash: %v", err)
+		return nil
+	}
+
 	cluster = fmt.Sprintf("%08x", h.Sum(nil)[:4])
 
 	a := &SpadeUUIDAssigner{
@@ -42,19 +57,31 @@ func StartUUIDAssigner(host string, cluster string) UUIDAssigner {
 	return a
 }
 
-func (a *SpadeUUIDAssigner) makeId(currentTimeHex, countHex string, buf *bytes.Buffer) {
+func (a *SpadeUUIDAssigner) makeID(currentTimeHex, countHex string, buf *bytes.Buffer) (err error) {
 	buf.Reset()
-	buf.WriteString(a.fixedString)
-	buf.WriteString(currentTimeHex)
-	buf.WriteString("-")
-	buf.WriteString(countHex)
+	_, err = buf.WriteString(a.fixedString)
+	if err == nil {
+		_, err = buf.WriteString(currentTimeHex)
+	}
+	if err == nil {
+		_, err = buf.WriteString("-")
+	}
+	if err == nil {
+		_, err = buf.WriteString(countHex)
+	}
+
+	return err
 }
 
 func (a *SpadeUUIDAssigner) crank() {
 	currentTimeHex := strconv.FormatInt(time.Now().Unix(), 16)
 	countHex := strconv.FormatUint(a.count, 16)
 	buf := bytes.NewBuffer(make([]byte, 0, 34))
-	a.makeId(currentTimeHex, countHex, buf)
+	err := a.makeID(currentTimeHex, countHex, buf)
+	if err != nil {
+		log.Printf("Error creating UUID %v", err)
+	}
+
 	for {
 		select {
 		case <-a.secondTicker:
@@ -63,11 +90,15 @@ func (a *SpadeUUIDAssigner) crank() {
 		case a.assign <- buf.String():
 			a.count++
 			countHex := strconv.FormatUint(a.count, 16)
-			a.makeId(currentTimeHex, countHex, buf)
+			err = a.makeID(currentTimeHex, countHex, buf)
+			if err != nil {
+				log.Printf("Error creating UUID %v", err)
+			}
 		}
 	}
 }
 
+// Assign a UUID from the SpadeUUIDAssigner go routine
 func (a *SpadeUUIDAssigner) Assign() string {
 	return <-a.assign
 }
