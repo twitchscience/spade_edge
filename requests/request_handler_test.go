@@ -66,7 +66,7 @@ func TestTooBigRequest(t *testing.T) {
 	req, err := http.NewRequest(
 		"POST",
 		"http://spade.example.com/",
-		strings.NewReader(fmt.Sprintf("data=%s", longJson)),
+		strings.NewReader(fmt.Sprintf("data=%s", longJSON)),
 	)
 	if err != nil {
 		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
@@ -248,7 +248,7 @@ func BenchmarkRequests(b *testing.B) {
 }
 
 var (
-	longJson     = `{"event":"` + strings.Repeat("BigData", 700000) + `"}`
+	longJSON     = `{"event":"` + strings.Repeat("BigData", 700000) + `"}`
 	testRequests = []testTuple{
 		testTuple{
 			Request: testRequest{

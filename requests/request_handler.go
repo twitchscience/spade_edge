@@ -129,7 +129,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 	err := r.ParseForm()
 	if err != nil {
 		if err.Error() == "http: request body too large" {
-			s.StatLogger.Inc("large_request", 1, 1.0)
+			_ = s.StatLogger.Inc("large_request", 1, 1.0)
 			log.Printf("Request larger than %d bytes, rejecting.", maxBytesPerRequest)
 			return http.StatusRequestEntityTooLarge
 		}
@@ -147,7 +147,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 		b, err = ioutil.ReadAll(r.Body)
 		if err != nil {
 			if err.Error() == "http: request body too large" {
-				s.StatLogger.Inc("large_request", 1, 1.0)
+				_ = s.StatLogger.Inc("large_request", 1, 1.0)
 				log.Printf("Request larger than %d bytes, rejecting.", maxBytesPerRequest)
 				return http.StatusRequestEntityTooLarge
 			}
