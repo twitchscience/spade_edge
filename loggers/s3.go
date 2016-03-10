@@ -65,12 +65,11 @@ func NewS3Logger(
 		return nil, fmt.Errorf("Failed to access S3 bucket '%s'", config.Bucket)
 	}
 
-	err = eventBucket.PutBucket(s3.BucketOwnerFull)
-	if err != nil {
-		if err.Error() != "Your previous request to create the named bucket succeeded and you already own it." {
-			return nil, fmt.Errorf("Error creating S3 bucket '%s': %v", config.Bucket, err)
-		}
-	}
+	// Ignoring the error here. Our IAM roles don't generally give the edge access to creating buckets.
+	// In the future we should replace this with a test if teh bucket exists, but I can't find that in the
+	// crowdmob/goamz package, and it's out of scope right now to upgrade to a newer goamz or even better
+	// to aws-sdk-go
+	_ = eventBucket.PutBucket(s3.BucketOwnerFull)
 
 	s3Uploader := &uploader.S3UploaderBuilder{
 		Bucket:           eventBucket,
