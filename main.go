@@ -8,8 +8,6 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/afex/hystrix-go/hystrix"
@@ -22,6 +20,8 @@ import (
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/crowdmob/goamz/aws"
 	"github.com/crowdmob/goamz/s3"
+
+	"github.com/tylerb/graceful"
 )
 
 var (
@@ -126,16 +126,6 @@ func main() {
 		log.Println("WARNING: No kinesis logger specified!")
 	}
 
-	// Trigger close on receipt of SIGINT
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc,
-		syscall.SIGINT)
-	go func() {
-		<-sigc
-		edgeLoggers.Close()
-		os.Exit(0)
-	}()
-
 	hystrixStreamHandler := hystrix.NewStreamHandler()
 	hystrixStreamHandler.Start()
 	go func() {
@@ -158,14 +148,21 @@ func main() {
 	)
 
 	// setup server and listen
-	server := &http.Server{
-		Addr:           config.Port,
-		Handler:        requests.NewSpadeHandler(stats, edgeLoggers, uuidAssigner, config.CorsOrigins),
-		ReadTimeout:    5 * time.Second,
-		WriteTimeout:   5 * time.Second,
-		MaxHeaderBytes: 1 << 20, // 0.5MB
+	server := &graceful.Server{
+		NoSignalHandling: true,
+		Server: &http.Server{
+			Addr:           config.Port,
+			Handler:        requests.NewSpadeHandler(stats, edgeLoggers, uuidAssigner, config.CorsOrigins),
+			ReadTimeout:    5 * time.Second,
+			WriteTimeout:   5 * time.Second,
+			MaxHeaderBytes: 1 << 20, // 0.5MB
+		},
 	}
+
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalln(err)
 	}
+
+	edgeLoggers.Close()
+	os.Exit(0)
 }
