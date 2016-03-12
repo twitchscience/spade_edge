@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
@@ -39,6 +40,8 @@ const corsMaxAge = "86400" // One day
 
 // EdgeLoggers represent the different kind of loggers for Spade events
 type EdgeLoggers struct {
+	sync.WaitGroup
+	closed             chan struct{}
 	S3AuditLogger      loggers.SpadeEdgeLogger
 	S3EventLogger      loggers.SpadeEdgeLogger
 	KinesisEventLogger loggers.SpadeEdgeLogger
@@ -48,13 +51,24 @@ type EdgeLoggers struct {
 // wuth UndefinedLogger logger instances
 func NewEdgeLoggers() *EdgeLoggers {
 	return &EdgeLoggers{
-		loggers.UndefinedLogger{},
-		loggers.UndefinedLogger{},
-		loggers.UndefinedLogger{},
+		closed:             make(chan struct{}),
+		S3AuditLogger:      loggers.UndefinedLogger{},
+		S3EventLogger:      loggers.UndefinedLogger{},
+		KinesisEventLogger: loggers.UndefinedLogger{},
 	}
 }
 
 func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
+	e.Add(1)
+	defer e.Done()
+
+	// If reading from the `closed` channel succeeds, the logger is closed.
+	select {
+	case <-e.closed:
+		return errors.New("Loggers are shutting down")
+	default: // Make this a non-blocking select
+	}
+
 	auditErr := e.S3AuditLogger.Log(event)
 	eventErr := e.S3EventLogger.Log(event)
 	kinesisErr := e.KinesisEventLogger.Log(event)
@@ -73,6 +87,9 @@ func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
 
 // Close closes the loggers
 func (e *EdgeLoggers) Close() {
+	close(e.closed)
+	e.Wait()
+
 	e.KinesisEventLogger.Close()
 	e.S3AuditLogger.Close()
 	e.S3EventLogger.Close()
