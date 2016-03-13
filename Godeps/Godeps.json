@@ -1,6 +1,9 @@
 {
 	"ImportPath": "github.com/twitchscience/spade_edge",
-	"GoVersion": "go1.3",
+	"GoVersion": "go1.6",
+	"Packages": [
+		"./..."
+	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/afex/hystrix-go/hystrix",
@@ -24,15 +27,16 @@
 		},
 		{
 			"ImportPath": "github.com/sendgridlabs/go-kinesis",
-			"Comment": "1.0.1-14-g21dfd44",
-			"Rev": "21dfd445a8ef22c22bd994d6c8c4a93d009c8488"
+			"Comment": "1.0.1-16-ga25ca7b",
+			"Rev": "a25ca7bfd67d7a288666636fd6de98f6d26ea6e5"
+		},
+		{
+			"ImportPath": "github.com/sendgridlabs/go-kinesis/batchproducer",
+			"Comment": "1.0.1-16-ga25ca7b",
+			"Rev": "a25ca7bfd67d7a288666636fd6de98f6d26ea6e5"
 		},
 		{
 			"ImportPath": "github.com/twitchscience/aws_utils/common",
-			"Rev": "905565bfb31c38d473a91f4fae4006b7c76eefe3"
-		},
-		{
-			"ImportPath": "github.com/twitchscience/aws_utils/environment",
 			"Rev": "905565bfb31c38d473a91f4fae4006b7c76eefe3"
 		},
 		{
@@ -58,6 +62,15 @@
 		{
 			"ImportPath": "github.com/twitchscience/scoop_protocol/spade",
 			"Rev": "faec7ac1ec4c171bfd77506bdda891eccac2e312"
+		},
+		{
+			"ImportPath": "github.com/tylerb/graceful",
+			"Comment": "v1.2.4-8-gc78c8d9",
+			"Rev": "c78c8d9dded2ad16ad81b1fa526a81b2bb8049f6"
+		},
+		{
+			"ImportPath": "golang.org/x/net/netutil",
+			"Rev": "3e5cd1ed149001198e582f9d3f5bfd564cde2896"
 		}
 	]
 }
