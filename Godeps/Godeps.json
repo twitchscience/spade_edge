@@ -1,6 +1,7 @@
 {
 	"ImportPath": "github.com/twitchscience/spade_edge",
-	"GoVersion": "go1.3",
+	"GoVersion": "go1.6",
+	"GodepVersion": "v58",
 	"Deps": [
 		{
 			"ImportPath": "github.com/afex/hystrix-go/hystrix",
@@ -45,15 +46,15 @@
 		},
 		{
 			"ImportPath": "github.com/twitchscience/gologging/file_writer",
-			"Rev": "412f15b8565727874975f6b44197cdb6b5c9fa0c"
+			"Rev": "abee2d34ce4f0333c812674c62af3b6d2b0f6ab2"
 		},
 		{
 			"ImportPath": "github.com/twitchscience/gologging/gologging",
-			"Rev": "412f15b8565727874975f6b44197cdb6b5c9fa0c"
+			"Rev": "abee2d34ce4f0333c812674c62af3b6d2b0f6ab2"
 		},
 		{
 			"ImportPath": "github.com/twitchscience/gologging/key_name_generator",
-			"Rev": "412f15b8565727874975f6b44197cdb6b5c9fa0c"
+			"Rev": "abee2d34ce4f0333c812674c62af3b6d2b0f6ab2"
 		},
 		{
 			"ImportPath": "github.com/twitchscience/scoop_protocol/spade",
