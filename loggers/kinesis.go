@@ -41,7 +41,6 @@ func (d debugLogger) Printf(format string, args ...interface{}) {
 // KinesisLoggerConfig is used to configure a new SpadeEdgeLogger that writes to
 // an AWS Kinesis stream
 type KinesisLoggerConfig struct {
-	Region                 string
 	StreamName             string
 	BatchSize              int
 	BufferSize             int
@@ -51,7 +50,7 @@ type KinesisLoggerConfig struct {
 }
 
 // NewKinesisLogger creates a new SpadeEdgeLogger that writes to an AWS Kinesis stream
-func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger, statter statsd.Statter) (SpadeEdgeLogger, error) {
+func NewKinesisLogger(config KinesisLoggerConfig, region string, fallback SpadeEdgeLogger, statter statsd.Statter) (SpadeEdgeLogger, error) {
 	flushInterval, err := time.ParseDuration(config.FlushInterval)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing %s as a time.Duration: %v", config.FlushInterval, err)
@@ -68,7 +67,7 @@ func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger, stat
 	statReceiver := &kinesisStats{
 		statter: statter,
 	}
-	client := kinesis.New(auth, config.Region)
+	client := kinesis.New(auth, region)
 
 	producerConfig := batchproducer.Config{
 		AddBlocksWhenBufferFull: true,

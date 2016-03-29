@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/crowdmob/goamz/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
 
 	"github.com/twitchscience/aws_utils/uploader"
 	"github.com/twitchscience/gologging/gologging"
@@ -34,10 +35,11 @@ type S3LoggerConfig struct {
 // NewS3Logger returns a new SpadeEdgeLogger that events to S3 after
 // transforming the events into lines of text using the printFunc
 func NewS3Logger(
-	s3Connection *s3.S3,
 	config S3LoggerConfig,
 	loggingDir string,
 	printFunc EventToStringFunc,
+	sqs sqsiface.SQSAPI,
+	S3Uploader *s3manager.Uploader,
 ) (SpadeEdgeLogger, error) {
 	var (
 		successNotifier uploader.NotifierHarness      = &DummyNotifierHarness{}
@@ -50,30 +52,20 @@ func NewS3Logger(
 	}
 
 	if len(config.SuccessQueue) > 0 {
-		successNotifier = buildSQSNotifierHarness(config.SuccessQueue)
+		successNotifier = buildSQSNotifierHarness(sqs, config.SuccessQueue)
 	}
 
 	if len(config.ErrorQueue) > 0 {
-		errorNotifier = buildSQSErrorHarness(config.ErrorQueue)
+		errorNotifier = buildSQSErrorHarness(sqs, config.ErrorQueue)
 	}
 
 	rotateCoordinator := gologging.NewRotateCoordinator(config.MaxLines, maxAge)
 	loggingInfo := key_name_generator.BuildInstanceInfo(&key_name_generator.EnvInstanceFetcher{}, config.Bucket, loggingDir)
 
-	eventBucket := s3Connection.Bucket(config.Bucket)
-	if eventBucket == nil {
-		return nil, fmt.Errorf("Failed to access S3 bucket '%s'", config.Bucket)
-	}
-
-	// Ignoring the error here. Our IAM roles don't generally give the edge access to creating buckets.
-	// In the future we should replace this with a test if teh bucket exists, but I can't find that in the
-	// crowdmob/goamz package, and it's out of scope right now to upgrade to a newer goamz or even better
-	// to aws-sdk-go
-	_ = eventBucket.PutBucket(s3.BucketOwnerFull)
-
 	s3Uploader := &uploader.S3UploaderBuilder{
-		Bucket:           eventBucket,
+		Bucket:           config.Bucket,
 		KeyNameGenerator: &key_name_generator.EdgeKeyNameGenerator{Info: loggingInfo},
+		S3Manager:        S3Uploader,
 	}
 
 	uploadLogger, err := gologging.StartS3Logger(

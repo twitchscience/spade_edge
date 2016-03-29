@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
 	"github.com/twitchscience/aws_utils/notifier"
 	"github.com/twitchscience/aws_utils/uploader"
 )
@@ -54,14 +55,14 @@ func (s *SQSNotifierHarness) SendMessage(message *uploader.UploadReceipt) error 
 	return s.notifier.SendMessage("edge", s.qName, s.version, message.KeyName)
 }
 
-func buildSQSNotifierHarness(name string) uploader.NotifierHarness {
+func buildSQSNotifierHarness(sqs sqsiface.SQSAPI, name string) uploader.NotifierHarness {
 	if len(name) > 0 {
 		version, err := strconv.Atoi(os.Getenv("EDGE_VERSION"))
 		if err != nil {
 			log.Printf("Error getting EDGE_VERSION from environment : %v", err)
 		}
 
-		client := notifier.DefaultClient
+		client := notifier.BuildSQSClient(sqs)
 		client.Signer.RegisterMessageType("edge", func(args ...interface{}) (string, error) {
 			if len(args) < 2 {
 				return "", errors.New("Missing correct number of args ")
@@ -78,11 +79,11 @@ func buildSQSNotifierHarness(name string) uploader.NotifierHarness {
 	return nil
 }
 
-func buildSQSErrorHarness(name string) uploader.ErrorNotifierHarness {
+func buildSQSErrorHarness(sqs sqsiface.SQSAPI, name string) uploader.ErrorNotifierHarness {
 	if len(name) > 0 {
 		return &SQSErrorHarness{
 			qName:    name,
-			notifier: notifier.DefaultClient,
+			notifier: notifier.BuildSQSClient(sqs),
 		}
 	}
 	return nil

@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"github.com/afex/hystrix-go/hystrix"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/sqs"
 
 	"github.com/twitchscience/scoop_protocol/spade"
 	"github.com/twitchscience/spade_edge/loggers"
@@ -20,8 +23,6 @@ import (
 	"github.com/twitchscience/spade_edge/uuid"
 
 	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/crowdmob/goamz/aws"
-	"github.com/crowdmob/goamz/s3"
 )
 
 var (
@@ -65,22 +66,18 @@ func main() {
 		log.Fatalf("Statsd configuration error: %v\n", err)
 	}
 
-	auth, err := aws.GetAuth("", "", "", time.Now())
-	if err != nil {
-		log.Fatalln("Failed to recieve auth from env")
-	}
-	s3Connection := s3.New(
-		auth,
-		aws.USWest2,
-	)
+	session := session.New()
+	sqs := sqs.New(session)
+	s3Uploader := s3manager.NewUploader(session)
 
 	edgeLoggers := requests.NewEdgeLoggers()
 	if config.EventsLogger != nil {
 		edgeLoggers.S3EventLogger, err = loggers.NewS3Logger(
-			s3Connection,
 			*config.EventsLogger,
 			config.LoggingDir,
-			marshallingLoggingFunc)
+			marshallingLoggingFunc,
+			sqs,
+			s3Uploader)
 		if err != nil {
 			log.Fatalf("Error creating event logger: %v\n", err)
 		}
@@ -90,12 +87,13 @@ func main() {
 
 	if config.AuditsLogger != nil {
 		edgeLoggers.S3AuditLogger, err = loggers.NewS3Logger(
-			s3Connection,
 			*config.AuditsLogger,
 			config.LoggingDir,
 			func(e *spade.Event) (string, error) {
 				return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid), nil
-			})
+			},
+			sqs,
+			s3Uploader)
 		if err != nil {
 			log.Fatalf("Error creating audit logger: %v\n", err)
 		}
@@ -107,10 +105,11 @@ func main() {
 		var fallbackLogger loggers.SpadeEdgeLogger = loggers.UndefinedLogger{}
 		if config.FallbackLogger != nil {
 			fallbackLogger, err = loggers.NewS3Logger(
-				s3Connection,
 				*config.FallbackLogger,
 				config.LoggingDir,
-				marshallingLoggingFunc)
+				marshallingLoggingFunc,
+				sqs,
+				s3Uploader)
 			if err != nil {
 				log.Fatalf("Error creating fallback logger: %v\n", err)
 			}
@@ -118,7 +117,7 @@ func main() {
 			log.Println("WARNING: No fallback logger specified!")
 		}
 
-		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger(*config.EventStream, fallbackLogger, stats)
+		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger(*config.EventStream, os.Getenv("AWS_REGION"), fallbackLogger, stats)
 		if err != nil {
 			log.Fatalf("Error creating KinesisLogger %v\n", err)
 		}
