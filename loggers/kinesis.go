@@ -14,7 +14,10 @@ import (
 	"github.com/twitchscience/scoop_protocol/spade"
 )
 
-const kinesisStatsPrefix = "logger.kinesis."
+var (
+	debug              = os.Getenv("debug")
+	kinesisStatsPrefix = "logger.kinesis."
+)
 
 type kinesisLogger struct {
 	client       *kinesis.Kinesis
@@ -25,6 +28,14 @@ type kinesisLogger struct {
 	statReceiver *kinesisStats
 	statter      statsd.Statter
 	fallback     SpadeEdgeLogger
+}
+
+type debugLogger struct{}
+
+func (d debugLogger) Printf(format string, args ...interface{}) {
+	if debug != "" {
+		log.Printf(format, args...)
+	}
 }
 
 // KinesisLoggerConfig is used to configure a new SpadeEdgeLogger that writes to
@@ -58,13 +69,14 @@ func NewKinesisLogger(config KinesisLoggerConfig, fallback SpadeEdgeLogger, stat
 		statter: statter,
 	}
 	client := kinesis.New(auth, config.Region)
+
 	producerConfig := batchproducer.Config{
 		AddBlocksWhenBufferFull: true,
 		BufferSize:              config.BufferSize,
 		FlushInterval:           flushInterval,
 		BatchSize:               config.BatchSize,
 		MaxAttemptsPerRecord:    config.MaxAttemptsPerRecord,
-		Logger:                  log.New(os.Stderr, "", log.LstdFlags),
+		Logger:                  debugLogger{},
 		StatReceiver:            statReceiver,
 		StatInterval:            1 * time.Second,
 	}
