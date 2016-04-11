@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -24,6 +25,12 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 )
+
+//spadeEdgeAuditLog defines struct of audit log in spade-edge
+type edgeAuditLog struct {
+	UUID       string
+	ReceivedAt time.Time
+}
 
 var (
 	configFilename = flag.String("config", "conf.json", "name of config file")
@@ -52,6 +59,18 @@ func marshallingLoggingFunc(e *spade.Event) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%s", b), nil
+}
+
+func edgeAuditLogFunc(e *spade.Event) (string, error) {
+	newAuditLog := edgeAuditLog{
+		UUID:       e.Uuid,
+		ReceivedAt: e.ReceivedAt,
+	}
+	jsonBytes, err := json.Marshal(newAuditLog)
+	if err != nil { // create string explicitly given marshall error
+		return fmt.Sprintf("{\"UUID\":\"%s\", \"ReceiveAt\":\"%v\"}", e.Uuid, e.ReceivedAt), err
+	}
+	return string(jsonBytes), nil
 }
 
 func main() {
@@ -89,9 +108,7 @@ func main() {
 		edgeLoggers.S3AuditLogger, err = loggers.NewS3Logger(
 			*config.AuditsLogger,
 			config.LoggingDir,
-			func(e *spade.Event) (string, error) {
-				return fmt.Sprintf("[%d] %s", e.ReceivedAt.Unix(), e.Uuid), nil
-			},
+			edgeAuditLogFunc,
 			sqs,
 			s3Uploader)
 		if err != nil {
