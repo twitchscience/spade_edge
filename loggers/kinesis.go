@@ -21,13 +21,14 @@ var (
 
 type kinesisLogger struct {
 	client       *kinesis.Kinesis
-	producer     batchproducer.Producer
+	producers    []batchproducer.Producer
 	channel      chan *spade.Event
 	errors       chan error
-	waitGroup    *sync.WaitGroup
 	statReceiver *kinesisStats
 	statter      statsd.Statter
 	fallback     SpadeEdgeLogger
+
+	sync.WaitGroup
 }
 
 type debugLogger struct{}
@@ -47,6 +48,7 @@ type KinesisLoggerConfig struct {
 	FlushInterval          string
 	MaxAttemptsPerRecord   int
 	PreProducerChannelSize int
+	NumProducers           int
 }
 
 // NewKinesisLogger creates a new SpadeEdgeLogger that writes to an AWS Kinesis stream
@@ -79,43 +81,56 @@ func NewKinesisLogger(config KinesisLoggerConfig, region string, fallback SpadeE
 		StatReceiver:            statReceiver,
 		StatInterval:            1 * time.Second,
 	}
-	producer, err := batchproducer.New(client, config.StreamName, producerConfig)
-	if err != nil {
-		return nil, err
-	}
-	waitGroup := &sync.WaitGroup{}
-
-	err = producer.Start()
-	if err != nil {
-		return nil, fmt.Errorf("Failed to start the kinesis producer: %v", err)
-	}
-
-	channel := make(chan *spade.Event, config.PreProducerChannelSize)
-	errors := make(chan error)
 
 	kl := &kinesisLogger{
 		client:       client,
-		producer:     producer,
-		channel:      channel,
-		errors:       errors,
-		waitGroup:    waitGroup,
+		channel:      make(chan *spade.Event, config.PreProducerChannelSize),
+		errors:       make(chan error),
 		statter:      statter,
 		statReceiver: statReceiver,
 		fallback:     fallback,
 	}
 
-	kl.start()
+	// Since we might fail to create or start all of the producers
+	// we prepare to stop the ones that were created
+	cleanupNeeded := true
+	defer func() {
+		if cleanupNeeded {
+			for _, producer := range kl.producers {
+				// Ignoring error because we are already cleaning up
+				_ = producer.Stop()
+			}
+		}
+	}()
 
+	for i := 0; i < config.NumProducers; i++ {
+		producer, err := batchproducer.New(client, config.StreamName, producerConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		err = producer.Start()
+		if err != nil {
+			return nil, fmt.Errorf("Failed to start the kinesis producer: %v", err)
+		}
+
+		kl.producers = append(kl.producers, producer)
+	}
+
+	// All producers created, so no need to clean them up
+	cleanupNeeded = false
+
+	kl.start()
 	return kl, nil
 }
 
-func (kl *kinesisLogger) logToKinesis(e *spade.Event) error {
+func (kl *kinesisLogger) logToProducer(p batchproducer.Producer, e *spade.Event) error {
 	data, err := spade.Marshal(e)
 	if err != nil {
 		return fmt.Errorf("error marshaling spade event: %v", err)
 	}
 
-	err = kl.producer.Add(data, e.Uuid)
+	err = p.Add(data, e.Uuid)
 	_ = kl.statter.Inc(kinesisStatsPrefix+"producer.added", 1, 1.0)
 	if err != nil {
 		_ = kl.statter.Inc(kinesisStatsPrefix+"producer.errors", 1, 1.0)
@@ -136,33 +151,36 @@ func (kl *kinesisLogger) logToFallback(e *spade.Event) error {
 }
 
 func (kl *kinesisLogger) start() {
-	go func() {
-		kl.waitGroup.Add(1)
-		defer kl.waitGroup.Done()
+	kl.Add(len(kl.producers))
 
-		defer func() {
-			_, _, err := kl.producer.Flush(time.Second, false)
-			if err != nil {
-				log.Println("Error flushing kinesis producer", err)
-			}
-		}()
+	for _, p := range kl.producers {
+		go func(producer batchproducer.Producer) {
+			defer kl.Done()
 
-		defer close(kl.errors)
+			defer func() {
+				_, _, err := producer.Flush(time.Second, false)
+				if err != nil {
+					log.Println("Error flushing kinesis producer", err)
+				}
+			}()
 
-		for e := range kl.channel {
-			err := kl.logToKinesis(e)
-			if err != nil {
-				log.Println(err)
-				kl.errors <- err
+			defer close(kl.errors)
 
-				err = kl.logToFallback(e)
+			for e := range kl.channel {
+				err := kl.logToProducer(producer, e)
 				if err != nil {
 					log.Println(err)
 					kl.errors <- err
+
+					err = kl.logToFallback(e)
+					if err != nil {
+						log.Println(err)
+						kl.errors <- err
+					}
 				}
 			}
-		}
-	}()
+		}(p)
+	}
 }
 
 // Log will attempt to queue up an event to be published into Kinesis.
@@ -197,11 +215,13 @@ func (kl *kinesisLogger) Close() {
 	kl.fallback.Close()
 
 	close(kl.channel)
-	kl.waitGroup.Wait()
+	kl.Wait()
 	kl.statReceiver.log()
 
-	err := kl.producer.Stop()
-	if err != nil {
-		log.Printf("Error stopping kinesis producer: %v", err)
+	for _, p := range kl.producers {
+		err := p.Stop()
+		if err != nil {
+			log.Printf("Error stopping kinesis producer: %v", err)
+		}
 	}
 }
