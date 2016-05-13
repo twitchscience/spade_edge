@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,15 +12,14 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/twitchscience/scoop_protocol/spade"
-	"github.com/twitchscience/spade_edge/uuid"
+)
+
+const (
+	instanceID = "i-test"
 )
 
 type testEdgeLogger struct {
 	events [][]byte
-}
-
-type testUUIDAssigner struct {
-	i int
 }
 
 type testRequest struct {
@@ -54,11 +52,6 @@ func (t *testEdgeLogger) Log(e *spade.Event) error {
 }
 
 func (t *testEdgeLogger) Close() {}
-
-func (t *testUUIDAssigner) Assign() string {
-	t.i++
-	return fmt.Sprintf("%d", t.i)
-}
 
 func TestTooBigRequest(t *testing.T) {
 	SpadeHandler := makeSpadeHandler()
@@ -104,7 +97,7 @@ func makeSpadeHandler() *SpadeHandler {
 	c, _ := statsd.NewNoop()
 	loggers := NewEdgeLoggers()
 	loggers.S3EventLogger = &testEdgeLogger{}
-	SpadeHandler := NewSpadeHandler(c, loggers, &testUUIDAssigner{}, []string{""})
+	SpadeHandler := NewSpadeHandler(c, loggers, instanceID, []string{""})
 	SpadeHandler.Time = func() time.Time { return fixedTime }
 	return SpadeHandler
 }
@@ -143,7 +136,7 @@ func TestEndPoints(t *testing.T) {
 				ReceivedAt:    fixedTime.UTC(),
 				ClientIp:      fixedIP,
 				XForwardedFor: fixedIP.String(),
-				Uuid:          fmt.Sprintf("%d", uuidCounter),
+				Uuid:          fmt.Sprintf("%s-%08x-%08x", instanceID, fixedTime.UTC().Unix(), uuidCounter),
 				Data:          tt.Expectation,
 				Version:       spade.PROTOCOL_VERSION,
 			})
@@ -207,19 +200,6 @@ func isEndpointGood(endpoint string) bool {
 		}
 	}
 	return false
-}
-
-func BenchmarkUUIDAssigner(b *testing.B) {
-	uuidAssigner := uuid.StartUUIDAssigner(
-		os.Getenv("HOST"),
-		os.Getenv("CLOUD_CLUSTER"),
-	)
-
-	for i := 0; i < b.N; i++ {
-		uuidAssigner.Assign()
-	}
-	b.ReportAllocs()
-
 }
 
 func BenchmarkRequests(b *testing.B) {

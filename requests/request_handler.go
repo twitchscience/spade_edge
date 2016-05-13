@@ -3,6 +3,7 @@ package requests
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -11,12 +12,12 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/twitchscience/scoop_protocol/spade"
 	"github.com/twitchscience/spade_edge/loggers"
-	"github.com/twitchscience/spade_edge/uuid"
 )
 
 var (
@@ -99,18 +100,23 @@ func (e *EdgeLoggers) Close() {
 type SpadeHandler struct {
 	StatLogger  statsd.Statter
 	EdgeLoggers *EdgeLoggers
-	Assigner    uuid.Assigner
 	Time        func() time.Time // Defaults to time.Now
+	instanceID  string
 	corsOrigins map[string]bool
+
+	// eventCount counts the number of event requests handled. It is used in
+	// uuid generation. eventCount is read and written from miltiple go routines
+	// so any access to it should go through sync/atomic
+	eventCount uint64
 }
 
 // NewSpadeHandler returns a new instance of SpadeHandler
-func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, assigner uuid.Assigner, CORSOrigins []string) *SpadeHandler {
+func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, instanceID string, CORSOrigins []string) *SpadeHandler {
 	h := &SpadeHandler{
 		StatLogger:  stats,
 		EdgeLoggers: loggers,
-		Assigner:    assigner,
 		Time:        time.Now,
+		instanceID:  instanceID,
 		corsOrigins: make(map[string]bool),
 	}
 
@@ -183,8 +189,8 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 
 	context.Timers["data"] = statTimer.stopTiming()
 
-	// // get event
-	uuid := s.Assigner.Assign()
+	count := atomic.AddUint64(&s.eventCount, 1)
+	uuid := fmt.Sprintf("%s-%08x-%08x", s.instanceID, context.Now.Unix(), count)
 	context.Timers["uuid"] = statTimer.stopTiming()
 
 	event := spade.NewEvent(

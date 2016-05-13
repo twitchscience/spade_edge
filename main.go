@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/afex/hystrix-go/hystrix"
+	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -21,7 +22,6 @@ import (
 	"github.com/twitchscience/scoop_protocol/spade"
 	"github.com/twitchscience/spade_edge/loggers"
 	"github.com/twitchscience/spade_edge/requests"
-	"github.com/twitchscience/spade_edge/uuid"
 
 	"github.com/cactus/go-statsd-client/statsd"
 )
@@ -88,6 +88,11 @@ func main() {
 	session := session.New()
 	sqs := sqs.New(session)
 	s3Uploader := s3manager.NewUploader(session)
+	metadata := ec2metadata.New(session)
+	instanceID, err := metadata.GetMetadata("instance-id")
+	if err != nil {
+		log.Fatalf("Error retrieving instance-id from metadata service")
+	}
 
 	edgeLoggers := requests.NewEdgeLoggers()
 	if config.EventsLogger != nil {
@@ -168,15 +173,10 @@ func main() {
 		}
 	}()
 
-	uuidAssigner := uuid.StartUUIDAssigner(
-		os.Getenv("HOST"),
-		os.Getenv("CLOUD_CLUSTER"),
-	)
-
 	// setup server and listen
 	server := &http.Server{
 		Addr:           config.Port,
-		Handler:        requests.NewSpadeHandler(stats, edgeLoggers, uuidAssigner, config.CorsOrigins),
+		Handler:        requests.NewSpadeHandler(stats, edgeLoggers, instanceID, config.CorsOrigins),
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 0.5MB
