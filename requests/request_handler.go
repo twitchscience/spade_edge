@@ -105,7 +105,7 @@ type SpadeHandler struct {
 	corsOrigins map[string]bool
 
 	// eventCount counts the number of event requests handled. It is used in
-	// uuid generation. eventCount is read and written from miltiple go routines
+	// uuid generation. eventCount is read and written from multiple go routines
 	// so any access to it should go through sync/atomic
 	eventCount uint64
 }
