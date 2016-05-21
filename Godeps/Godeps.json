@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/twitchscience/spade_edge",
 	"GoVersion": "go1.6",
-	"GodepVersion": "v58",
+	"GodepVersion": "v68",
 	"Packages": [
 		"./..."
 	],
@@ -81,6 +81,16 @@
 			"Rev": "0bd49bf38f0396818638e27de5c73eee6e66012d"
 		},
 		{
+			"ImportPath": "github.com/aws/aws-sdk-go/private/protocol/json/jsonutil",
+			"Comment": "v1.1.6-3-g0bd49bf",
+			"Rev": "0bd49bf38f0396818638e27de5c73eee6e66012d"
+		},
+		{
+			"ImportPath": "github.com/aws/aws-sdk-go/private/protocol/jsonrpc",
+			"Comment": "v1.1.6-3-g0bd49bf",
+			"Rev": "0bd49bf38f0396818638e27de5c73eee6e66012d"
+		},
+		{
 			"ImportPath": "github.com/aws/aws-sdk-go/private/protocol/query",
 			"Comment": "v1.1.6-3-g0bd49bf",
 			"Rev": "0bd49bf38f0396818638e27de5c73eee6e66012d"
@@ -112,6 +122,11 @@
 		},
 		{
 			"ImportPath": "github.com/aws/aws-sdk-go/private/waiter",
+			"Comment": "v1.1.6-3-g0bd49bf",
+			"Rev": "0bd49bf38f0396818638e27de5c73eee6e66012d"
+		},
+		{
+			"ImportPath": "github.com/aws/aws-sdk-go/service/kinesis",
 			"Comment": "v1.1.6-3-g0bd49bf",
 			"Rev": "0bd49bf38f0396818638e27de5c73eee6e66012d"
 		},
@@ -154,16 +169,6 @@
 			"ImportPath": "github.com/jmespath/go-jmespath",
 			"Comment": "0.2.2-12-g0b12d6b",
 			"Rev": "0b12d6b521d83fc7f755e7cfc1b1fbdd35a01a74"
-		},
-		{
-			"ImportPath": "github.com/sendgridlabs/go-kinesis",
-			"Comment": "1.0.1-16-ga25ca7b",
-			"Rev": "a25ca7bfd67d7a288666636fd6de98f6d26ea6e5"
-		},
-		{
-			"ImportPath": "github.com/sendgridlabs/go-kinesis/batchproducer",
-			"Comment": "1.0.1-16-ga25ca7b",
-			"Rev": "a25ca7bfd67d7a288666636fd6de98f6d26ea6e5"
 		},
 		{
 			"ImportPath": "github.com/twitchscience/aws_utils/common",

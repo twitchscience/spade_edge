@@ -16,6 +16,7 @@ import (
 	"github.com/afex/hystrix-go/hystrix"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/aws/aws-sdk-go/service/sqs"
 
@@ -87,6 +88,7 @@ func main() {
 
 	session := session.New()
 	sqs := sqs.New(session)
+	kinesis := kinesis.New(session)
 	s3Uploader := s3manager.NewUploader(session)
 	metadata := ec2metadata.New(session)
 	instanceID, err := metadata.GetMetadata("instance-id")
@@ -139,7 +141,7 @@ func main() {
 			log.Println("WARNING: No fallback logger specified!")
 		}
 
-		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger(*config.EventStream, os.Getenv("AWS_REGION"), fallbackLogger, stats)
+		edgeLoggers.KinesisEventLogger, err = loggers.NewKinesisLogger(kinesis, *config.EventStream, fallbackLogger, stats)
 		if err != nil {
 			log.Fatalf("Error creating KinesisLogger %v\n", err)
 		}
