@@ -16,7 +16,6 @@ export AWS_DEFAULT_REGION=$AWS_REGION # aws-cli uses AWS_DEFAULT_REGION, aws-sdk
 aws s3 cp "$CONFIG_PREFIX/conf.sh" conf.sh
 aws s3 cp "$CONFIG_PREFIX/conf.json" conf.json
 source conf.sh
-HOSTNAME="$(hostname)"
 
 exec ./spade_edge -config conf.json \
-                  -stat_prefix "${CLOUD_APP}.${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT}}.${EC2_REGION}.${CLOUD_AUTO_SCALE_GROUP##*-}.${HOSTNAME}"
+                  -stat_prefix "${CLOUD_APP}.${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT}}.${EC2_REGION}.${CLOUD_AUTO_SCALE_GROUP##*-}"
