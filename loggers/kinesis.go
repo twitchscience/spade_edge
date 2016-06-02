@@ -122,6 +122,7 @@ func NewKinesisLogger(client *kinesis.Kinesis, config KinesisLoggerConfig, fallb
 		statter:  statter,
 	}
 
+	kl.Add(1)
 	go kl.mainLoop()
 	return kl, nil
 }
@@ -141,6 +142,7 @@ func (kl *kinesisLogger) mainLoop() {
 	batchAge, _ := time.ParseDuration(kl.config.BatchAge)
 	flushTimer := time.NewTimer(batchAge)
 
+	defer kl.Done()
 	defer flushTimer.Stop()
 	defer kl.flush()
 
@@ -315,8 +317,8 @@ func (kl *kinesisLogger) Log(e *spade.Event) error {
 }
 
 func (kl *kinesisLogger) Close() {
-	kl.fallback.Close()
-
 	close(kl.incoming)
 	kl.Wait()
+
+	kl.fallback.Close()
 }
