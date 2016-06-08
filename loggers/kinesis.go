@@ -1,7 +1,6 @@
 package loggers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -251,20 +250,23 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 	// because that is what we started with. This is potentially wasteful but this should be the
 	// rare case, so the code optimized for the common case
 	for _, record := range args.Records {
-		e := &spade.Event{}
-		_ = json.Unmarshal(record.Data, e)
-		err := kl.logToFallback(e)
+		e, err := spade.Decompress(record.Data)
 		if err != nil {
-			log.Printf("Error logging failed kinesis event to fallback logger %v", err)
+			log.Printf("Error calling DecompressEvent: %s", err)
+			continue
+		}
+		err = kl.logToFallback(e)
+		if err != nil {
+			log.Printf("Error logging failed kinesis event to fallback logger %s", err)
 		}
 	}
 }
 
 func (kl *kinesisLogger) addToChannel(e *spade.Event) error {
-	data, err := spade.Marshal(e)
+	data, err := spade.Compress(e)
 	if err != nil {
-		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.fail.marshal", 1, 1.0)
-		return fmt.Errorf("Unable to marshal spade event: %s", err)
+		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.fail.compress", 1, 1.0)
+		return err
 	}
 
 	if len(data) > maxEventSize {
