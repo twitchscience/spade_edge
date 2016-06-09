@@ -1,6 +1,9 @@
 package loggers
 
 import (
+	"bytes"
+	"compress/flate"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -14,9 +17,9 @@ import (
 )
 
 const (
-	maxBatchLength = 500
-	maxBatchSize   = 5 * 1024 * 1024
-	maxEventSize   = 1 * 1024 * 1024
+	maxBatchLength          = 500
+	maxBatchSize            = 5 * 1024 * 1024
+	compressionVersion byte = 1
 )
 
 var (
@@ -29,14 +32,23 @@ type KinesisLoggerConfig struct {
 	// StreamName is the name of the Kinesis stream we are producing events into
 	StreamName string
 
-	// BatchLength is the max amount of events per batch sent to Kinesis
+	// BatchLength is the max amount of globs per batch sent to Kinesis
 	BatchLength int
 
 	// BatchSize is the max size in bytes per batch sent to Kinesis
 	BatchSize int
 
-	// BatchAge is the max age of the oldest record in the batch
+	// BatchAge is the max age of the oldest glob in the batch
 	BatchAge string
+
+	// GlobLength is the max amount of events per glob
+	GlobLength int
+
+	// GlobSize is the max size in bytes per glob
+	GlobSize int
+
+	// GlobAge is the max age of the oldest record in the glob
+	GlobAge string
 
 	// BufferLength is the length of the buffer in front of the kinesis production code. If the buffer fills
 	// up events will be written to the fallback logger
@@ -95,13 +107,17 @@ type kinesisBatchEntry struct {
 }
 
 type kinesisLogger struct {
-	client    *kinesis.Kinesis
-	incoming  chan kinesisBatchEntry
-	batch     []kinesisBatchEntry
-	batchSize int
-	statter   statsd.Statter
-	fallback  SpadeEdgeLogger
-	config    KinesisLoggerConfig
+	client     *kinesis.Kinesis
+	incoming   chan *spade.Event
+	batch      []kinesisBatchEntry
+	compressed chan kinesisBatchEntry
+	glob       []*spade.Event
+	globSize   int
+	batchSize  int
+	statter    statsd.Statter
+	fallback   SpadeEdgeLogger
+	config     KinesisLoggerConfig
+	compressor *flate.Writer
 	sync.WaitGroup
 }
 
@@ -113,16 +129,18 @@ func NewKinesisLogger(client *kinesis.Kinesis, config KinesisLoggerConfig, fallb
 	}
 
 	kl := &kinesisLogger{
-		client:   client,
-		incoming: make(chan kinesisBatchEntry, config.BufferLength),
-		batch:    make([]kinesisBatchEntry, 0, config.BatchLength),
-		config:   config,
-		fallback: fallback,
-		statter:  statter,
+		client:     client,
+		incoming:   make(chan *spade.Event, config.BufferLength),
+		compressed: make(chan kinesisBatchEntry),
+		batch:      make([]kinesisBatchEntry, 0, config.BatchLength),
+		config:     config,
+		fallback:   fallback,
+		statter:    statter,
 	}
 
-	kl.Add(1)
-	go kl.mainLoop()
+	kl.Add(2)
+	go kl.compressLoop()
+	go kl.submitLoop()
 	return kl, nil
 }
 
@@ -137,7 +155,110 @@ func (kl *kinesisLogger) addToBatch(e kinesisBatchEntry) {
 	kl.batchSize += s
 }
 
-func (kl *kinesisLogger) mainLoop() {
+// addToGlob adds an event to the current glob if there is space, or submits
+// the current glob to be batched
+func (kl *kinesisLogger) addToGlob(e *spade.Event) {
+	s := len(e.Data)
+	if s+kl.globSize > kl.config.GlobSize || len(kl.glob) == kl.config.GlobLength {
+		kl.compress()
+	}
+	kl.glob = append(kl.glob, e)
+	kl.globSize += s
+}
+
+func (kl *kinesisLogger) compress() {
+	err := kl._compress()
+	if err != nil {
+		for _, e := range kl.glob {
+			_ = kl.logToFallback(e)
+		}
+	}
+	kl.glob = kl.glob[:0]
+	kl.globSize = 0
+}
+
+func (kl *kinesisLogger) _compress() error {
+	var (
+		buffer bytes.Buffer
+		err    error
+	)
+
+	if len(kl.glob) == 0 {
+		return nil
+	}
+
+	_ = buffer.WriteByte(compressionVersion)
+	kl.compressor.Reset(&buffer)
+
+	start := time.Now()
+	uncompresed, err := json.Marshal(kl.glob)
+	if err != nil {
+		return err
+	}
+
+	_, err = kl.compressor.Write(uncompresed)
+	if err != nil {
+		return err
+	}
+
+	err = kl.compressor.Close()
+	if err != nil {
+		return err
+	}
+
+	_ = kl.statter.TimingDuration(kinesisStatsPrefix+"compress.duration", time.Now().Sub(start), 1)
+
+	compressed := buffer.Bytes()
+	kl.compressed <- kinesisBatchEntry{
+		data:    compressed,
+		distkey: kl.glob[0].Uuid,
+	}
+
+	_ = kl.statter.Inc(kinesisStatsPrefix+"compress.uncompressed_size", int64(len(uncompresed)), 1)
+	_ = kl.statter.Inc(kinesisStatsPrefix+"compress.compressed_size", int64(len(compressed)), 1)
+
+	return nil
+}
+
+func (kl *kinesisLogger) compressLoop() {
+	globAge, _ := time.ParseDuration(kl.config.GlobAge)
+	timer := time.NewTimer(globAge)
+
+	defer kl.Done()
+	defer timer.Stop()
+	defer close(kl.compressed)
+
+	// We reset kl.compressor with a buffer to write to when we compress, but
+	// we need some buffer for kl.compressor.Close() to write to in the case
+	// that we never ever called Reset. So we use a scratch buffer
+	var scratch bytes.Buffer
+	kl.compressor, _ = flate.NewWriter(&scratch, flate.BestSpeed)
+	defer func() {
+		err := kl.compressor.Close()
+		if err != nil {
+			log.Printf("Failed to close compressor: %v", err)
+		}
+	}()
+
+	defer kl.compress()
+
+	for {
+		select {
+		case <-timer.C:
+			kl.compress()
+		case e, ok := <-kl.incoming:
+			if !ok {
+				return
+			}
+			kl.addToGlob(e)
+			if len(kl.glob) == 1 {
+				timer.Reset(globAge)
+			}
+		}
+	}
+}
+
+func (kl *kinesisLogger) submitLoop() {
 	batchAge, _ := time.ParseDuration(kl.config.BatchAge)
 	flushTimer := time.NewTimer(batchAge)
 
@@ -149,7 +270,7 @@ func (kl *kinesisLogger) mainLoop() {
 		select {
 		case <-flushTimer.C:
 			kl.flush()
-		case e, ok := <-kl.incoming:
+		case e, ok := <-kl.compressed:
 			if !ok {
 				return
 			}
@@ -167,10 +288,10 @@ func (kl *kinesisLogger) flush() {
 	}
 
 	records := make([]*kinesis.PutRecordsRequestEntry, len(kl.batch))
-	for i, r := range kl.batch {
+	for i, e := range kl.batch {
 		records[i] = &kinesis.PutRecordsRequestEntry{
-			PartitionKey: aws.String(r.distkey),
-			Data:         r.data,
+			PartitionKey: aws.String(e.distkey),
+			Data:         e.data,
 		}
 	}
 	kl.batch = kl.batch[:0]
@@ -263,28 +384,8 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 }
 
 func (kl *kinesisLogger) addToChannel(e *spade.Event) error {
-	data, err := spade.Compress(e)
-	if err != nil {
-		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.fail.compress", 1, 1.0)
-		return err
-	}
-
-	if len(data) > maxEventSize {
-		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.fail.maxeventsize", 1, 1.0)
-		return fmt.Errorf("Event larger than Max Event Size (%d)", maxEventSize)
-	}
-
-	if len(data) > kl.config.BatchSize {
-		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.fail.toobigforbatch", 1, 1.0)
-		return fmt.Errorf("Event larger than Batch Size (%d)", kl.config.BatchSize)
-	}
-
 	select {
-	// Submit event to channel
-	case kl.incoming <- kinesisBatchEntry{
-		data:    data,
-		distkey: e.Uuid,
-	}:
+	case kl.incoming <- e:
 		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.submitted", 1, 1.0)
 	default:
 		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.fail.buffer_full", 1, 1.0)
