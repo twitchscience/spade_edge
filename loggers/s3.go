@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager/s3manageriface"
 	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
 
 	"github.com/twitchscience/aws_utils/uploader"
@@ -39,7 +39,7 @@ func NewS3Logger(
 	loggingDir string,
 	printFunc EventToStringFunc,
 	sqs sqsiface.SQSAPI,
-	S3Uploader *s3manager.Uploader,
+	S3Uploader s3manageriface.UploaderAPI,
 ) (SpadeEdgeLogger, error) {
 	var (
 		successNotifier uploader.NotifierHarness      = &DummyNotifierHarness{}
@@ -62,11 +62,11 @@ func NewS3Logger(
 	rotateCoordinator := gologging.NewRotateCoordinator(config.MaxLines, maxAge)
 	loggingInfo := key_name_generator.BuildInstanceInfo(&key_name_generator.EnvInstanceFetcher{}, config.Bucket, loggingDir)
 
-	s3Uploader := &uploader.S3UploaderBuilder{
-		Bucket:           config.Bucket,
-		KeyNameGenerator: &key_name_generator.EdgeKeyNameGenerator{Info: loggingInfo},
-		S3Manager:        S3Uploader,
-	}
+	s3Uploader := uploader.NewFactory(
+		config.Bucket,
+		&key_name_generator.EdgeKeyNameGenerator{Info: loggingInfo},
+		S3Uploader,
+	)
 
 	uploadLogger, err := gologging.StartS3Logger(
 		rotateCoordinator,
