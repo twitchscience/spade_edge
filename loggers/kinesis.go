@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/twitchscience/aws_utils/logger"
 	"github.com/twitchscience/scoop_protocol/spade"
 )
 
@@ -177,33 +177,30 @@ func (kl *kinesisLogger) compress() {
 	kl.globSize = 0
 }
 
-func (kl *kinesisLogger) _compress() error {
-	var (
-		buffer bytes.Buffer
-		err    error
-	)
+func (kl *kinesisLogger) _compress() (err error) {
+	var buffer bytes.Buffer
 
 	if len(kl.glob) == 0 {
-		return nil
+		return
 	}
 
 	_ = buffer.WriteByte(compressionVersion)
 	kl.compressor.Reset(&buffer)
 
 	start := time.Now()
-	uncompresed, err := json.Marshal(kl.glob)
+	uncompressed, err := json.Marshal(kl.glob)
 	if err != nil {
-		return err
+		return
 	}
 
-	_, err = kl.compressor.Write(uncompresed)
+	_, err = kl.compressor.Write(uncompressed)
 	if err != nil {
-		return err
+		return
 	}
 
 	err = kl.compressor.Close()
 	if err != nil {
-		return err
+		return
 	}
 
 	_ = kl.statter.TimingDuration(kinesisStatsPrefix+"compress.duration", time.Now().Sub(start), 1)
@@ -214,10 +211,10 @@ func (kl *kinesisLogger) _compress() error {
 		distkey: kl.glob[0].Uuid,
 	}
 
-	_ = kl.statter.Inc(kinesisStatsPrefix+"compress.uncompressed_size", int64(len(uncompresed)), 1)
+	_ = kl.statter.Inc(kinesisStatsPrefix+"compress.uncompressed_size", int64(len(uncompressed)), 1)
 	_ = kl.statter.Inc(kinesisStatsPrefix+"compress.compressed_size", int64(len(compressed)), 1)
 
-	return nil
+	return
 }
 
 func (kl *kinesisLogger) compressLoop() {
@@ -236,7 +233,7 @@ func (kl *kinesisLogger) compressLoop() {
 	defer func() {
 		err := kl.compressor.Close()
 		if err != nil {
-			log.Printf("Failed to close compressor: %v", err)
+			logger.WithError(err).Error("Failed to close compressor")
 		}
 	}()
 
@@ -320,7 +317,10 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 		_ = kl.statter.TimingDuration(kinesisStatsPrefix+"putrecords", time.Now().Sub(t0), 1)
 
 		if err != nil {
-			log.Printf("PutRecords failure attempt number %d / %d: %v", attempt, kl.config.MaxAttemptsPerRecord, err)
+			logger.WithError(err).
+				WithField("attempt", attempt).
+				WithField("max_attempts", kl.config.MaxAttemptsPerRecord).
+				Warn("PutRecords failure")
 			_ = kl.statter.Inc(kinesisStatsPrefix+"putrecords.errors", 1, 1)
 			time.Sleep(retryDelay)
 			continue
@@ -365,7 +365,9 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 	}
 
 	// We ran out of retries for some records, write them to fallback logger
-	log.Printf("Failed sending %d out of %d records to kinesis", len(args.Records), len(records))
+	logger.WithField("num_errors", len(args.Records)).
+		WithField("num_attempts", len(records)).
+		Error("Failed sending records to kinesis")
 
 	// Failed records written to the fallback log. We know we can UnMarshal back into spade.Event
 	// because that is what we started with. This is potentially wasteful but this should be the
@@ -373,12 +375,12 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 	for _, record := range args.Records {
 		e, err := spade.Decompress(record.Data)
 		if err != nil {
-			log.Printf("Error calling DecompressEvent: %s", err)
+			logger.WithError(err).Error("Error calling DecompressEvent")
 			continue
 		}
 		err = kl.logToFallback(e)
 		if err != nil {
-			log.Printf("Error logging failed kinesis event to fallback logger %s", err)
+			logger.WithError(err).Error("Error logging failed kinesis event to fallback logger")
 		}
 	}
 }
@@ -387,12 +389,11 @@ func (kl *kinesisLogger) addToChannel(e *spade.Event) error {
 	select {
 	case kl.incoming <- e:
 		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.submitted", 1, 1.0)
+		return nil
 	default:
 		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.fail.buffer_full", 1, 1.0)
 		return errors.New("Channel full")
 	}
-
-	return nil
 }
 
 func (kl *kinesisLogger) logToFallback(e *spade.Event) error {
@@ -409,14 +410,16 @@ func (kl *kinesisLogger) logToFallback(e *spade.Event) error {
 // If an error is returned, the caller should assume the event was dropped
 func (kl *kinesisLogger) Log(e *spade.Event) error {
 	err := kl.addToChannel(e)
-	if err != nil {
-		fallbackErr := kl.logToFallback(e)
-		if err != nil {
-			return fmt.Errorf("submitting to channel failed with `%s` and fallback logger failed with `%s`", err, fallbackErr)
-		}
+	if err == nil {
+		return nil
 	}
 
-	return nil
+	fallbackErr := kl.logToFallback(e)
+	if fallbackErr == nil {
+		return nil
+	}
+
+	return fmt.Errorf("submitting to channel failed with `%s` and fallback logger failed with `%s`", err, fallbackErr)
 }
 
 func (kl *kinesisLogger) Close() {

@@ -188,20 +188,6 @@ func TestHandle(t *testing.T) {
 	}
 }
 
-func isEndpointGood(endpoint string) bool {
-	idx := strings.Index(endpoint, "?")
-	if idx > -1 {
-		endpoint = endpoint[:idx]
-	}
-	endpoint = "/" + endpoint
-	for _, valid := range goodEndpoints {
-		if endpoint == valid {
-			return true
-		}
-	}
-	return false
-}
-
 func BenchmarkRequests(b *testing.B) {
 	SpadeHandler := makeSpadeHandler()
 	reqGet, err := http.NewRequest("GET", "http://spade.twitch.tv/?data=blah", nil)
@@ -375,14 +361,5 @@ var (
 				Code: http.StatusNotFound,
 			},
 		},
-	}
-	goodEndpoints = []string{
-		"/crossdomain.xml",
-		"/healthcheck",
-		"/xarth",
-		"/integration",
-		"/",
-		"/track",
-		"/track/",
 	}
 )

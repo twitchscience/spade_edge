@@ -3,11 +3,11 @@ package loggers
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
+	"github.com/twitchscience/aws_utils/logger"
 	"github.com/twitchscience/aws_utils/notifier"
 	"github.com/twitchscience/aws_utils/uploader"
 )
@@ -46,7 +46,7 @@ type SQSErrorHarness struct {
 func (s *SQSErrorHarness) SendError(er error) {
 	err := s.notifier.SendMessage("error", s.qName, er)
 	if err != nil {
-		log.Println(err)
+		logger.WithError(err).WithField("sent_error", er).Error("Error sending error")
 	}
 }
 
@@ -59,7 +59,7 @@ func buildSQSNotifierHarness(sqs sqsiface.SQSAPI, name string) uploader.Notifier
 	if len(name) > 0 {
 		version, err := strconv.Atoi(os.Getenv("EDGE_VERSION"))
 		if err != nil {
-			log.Printf("Error getting EDGE_VERSION from environment : %v", err)
+			logger.WithError(err).Error("Error getting EDGE_VERSION from environment")
 		}
 
 		client := notifier.BuildSQSClient(sqs)
