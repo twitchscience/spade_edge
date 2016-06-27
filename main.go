@@ -72,6 +72,23 @@ func edgeAuditLogFunc(e *spade.Event) (string, error) {
 	return string(jsonBytes), nil
 }
 
+func newS3Logger(loggerType string,
+		 cfg *loggers.S3LoggerConfig,
+		 loggingFunc loggers.EventToStringFunc,
+		 sqs *sqs.SQS,
+		 s3Uploader *s3manager.Uploader) loggers.SpadeEdgeLogger {
+	if cfg == nil {
+		logger.Warnf("No %s logger specified", loggerType)
+		return loggers.UndefinedLogger{}
+	}
+
+	s3Logger, err := loggers.NewS3Logger(*cfg, config.LoggingDir, loggingFunc, sqs, s3Uploader)
+	if err != nil {
+		logger.WithError(err).Fatalf("Error creating %s logger", loggerType)
+	}
+	return s3Logger
+}
+
 func main() {
 	logger.Init("info")
 	flag.Parse()
@@ -96,52 +113,14 @@ func main() {
 	}
 
 	edgeLoggers := requests.NewEdgeLoggers()
-	if config.EventsLogger == nil {
-		logger.Warn("No event logger specified")
-	} else {
-		edgeLoggers.S3EventLogger, err = loggers.NewS3Logger(
-			*config.EventsLogger,
-			config.LoggingDir,
-			marshallingLoggingFunc,
-			sqs,
-			s3Uploader)
-		if err != nil {
-			logger.WithError(err).Fatal("Error creating event logger")
-		}
-	}
-
-	if config.AuditsLogger == nil {
-		logger.Warn("No audit logger specified")
-	} else {
-		edgeLoggers.S3AuditLogger, err = loggers.NewS3Logger(
-			*config.AuditsLogger,
-			config.LoggingDir,
-			edgeAuditLogFunc,
-			sqs,
-			s3Uploader)
-		if err != nil {
-			logger.WithError(err).Fatal("Error creating audit logger")
-		}
-	}
+	edgeLoggers.S3EventLogger = newS3Logger("event", config.EventsLogger, marshallingLoggingFunc, sqs, s3Uploader)
+	edgeLoggers.S3AuditLogger = newS3Logger("audit", config.AuditsLogger, edgeAuditLogFunc, sqs, s3Uploader)
 
 	if config.EventStream == nil {
 		logger.Warn("No kinesis logger specified")
 	} else {
-		var fallbackLogger loggers.SpadeEdgeLogger = loggers.UndefinedLogger{}
-		if config.FallbackLogger == nil {
-			logger.Warn("No fallback logger specified")
-		} else {
-			fallbackLogger, err = loggers.NewS3Logger(
-				*config.FallbackLogger,
-				config.LoggingDir,
-				marshallingLoggingFunc,
-				sqs,
-				s3Uploader)
-			if err != nil {
-				logger.WithError(err).Fatal("Error creating fallback logger")
-			}
-		}
-
+		fallbackLogger :=
+			newS3Logger("fallback", config.FallbackLogger, marshallingLoggingFunc, sqs, s3Uploader)
 		edgeLoggers.KinesisEventLogger, err =
 			loggers.NewKinesisLogger(kinesis, *config.EventStream, fallbackLogger, stats)
 		if err != nil {
