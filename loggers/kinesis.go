@@ -320,7 +320,7 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 			logger.WithError(err).
 				WithField("attempt", attempt).
 				WithField("max_attempts", kl.config.MaxAttemptsPerRecord).
-				Error("PutRecords failure")
+				Warn("PutRecords failure")
 			_ = kl.statter.Inc(kinesisStatsPrefix+"putrecords.errors", 1, 1)
 			time.Sleep(retryDelay)
 			continue
