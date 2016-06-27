@@ -104,10 +104,8 @@ func main() {
 
 	session := session.New()
 	sqs := sqs.New(session)
-	kinesis := kinesis.New(session)
 	s3Uploader := s3manager.NewUploader(session)
-	metadata := ec2metadata.New(session)
-	instanceID, err := metadata.GetMetadata("instance-id")
+	instanceID, err := ec2metadata.New(session).GetMetadata("instance-id")
 	if err != nil {
 		logger.WithError(err).Fatal("Error retrieving instance-id from metadata service")
 	}
@@ -122,7 +120,7 @@ func main() {
 		fallbackLogger :=
 			newS3Logger("fallback", config.FallbackLogger, marshallingLoggingFunc, sqs, s3Uploader)
 		edgeLoggers.KinesisEventLogger, err =
-			loggers.NewKinesisLogger(kinesis, *config.EventStream, fallbackLogger, stats)
+			loggers.NewKinesisLogger(kinesis.New(session), *config.EventStream, fallbackLogger, stats)
 		if err != nil {
 			logger.WithError(err).Fatal("Error creating Kinesis logger")
 		}
@@ -141,16 +139,12 @@ func main() {
 	hystrixStreamHandler.Start()
 	go func() {
 		err := http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
-		if err != nil {
-			logger.WithError(err).Error("Error listening to port 81 with hystrixStreamHandler")
-		}
+		logger.WithError(err).Error("Error listening to port 81 with hystrixStreamHandler")
 	}()
 
 	go func() {
 		err := http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
-		if err != nil {
-			logger.WithError(err).Error("Error listening to port 8082 with http.DefaultServeMux")
-		}
+		logger.WithError(err).Error("Error listening to port 8082 with http.DefaultServeMux")
 	}()
 
 	// setup server and listen
@@ -162,6 +156,6 @@ func main() {
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
-	err = server.ListenAndServe()	// always err != nil
+	err = server.ListenAndServe()
 	logger.WithError(err).Fatal("Error serving")
 }
