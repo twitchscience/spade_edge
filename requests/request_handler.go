@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"mime"
 	"net"
 	"net/http"
@@ -16,21 +15,22 @@ import (
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/twitchscience/aws_utils/logger"
 	"github.com/twitchscience/scoop_protocol/spade"
 	"github.com/twitchscience/spade_edge/loggers"
 )
 
 var (
-	xDomainContents = func() []byte {
+	xDomainContents = func() (b []byte) {
 		filename := os.Getenv("CROSS_DOMAIN_LOCATION")
 		if filename == "" {
 			filename = "../build/config/crossdomain.xml"
 		}
 		b, err := ioutil.ReadFile(filename)
 		if err != nil {
-			log.Fatalln("Cross domain file not found: ", err)
+			logger.WithError(err).Fatal("Cross domain file not found")
 		}
-		return b
+		return
 	}()
 	xmlApplicationType = mime.TypeByExtension(".xml")
 	xarth              = []byte("XARTH")
@@ -153,7 +153,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 	if err != nil {
 		if err.Error() == "http: request body too large" {
 			_ = s.StatLogger.Inc("large_request", 1, 1.0)
-			log.Printf("Request larger than %d bytes, rejecting.", maxBytesPerRequest)
+			logger.Warn(maxBytesErrorString)
 			return http.StatusRequestEntityTooLarge
 		}
 		return http.StatusBadRequest
@@ -171,7 +171,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 		if err != nil {
 			if err.Error() == "http: request body too large" {
 				_ = s.StatLogger.Inc("large_request", 1, 1.0)
-				log.Printf("Request larger than %d bytes, rejecting.", maxBytesPerRequest)
+				logger.Warn(maxBytesErrorString)
 				return http.StatusRequestEntityTooLarge
 			}
 			return http.StatusBadRequest
@@ -214,10 +214,11 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 }
 
 const (
-	ipForwardHeader    = "X-Forwarded-For"
-	badEndpoint        = "FourOhFour"
-	nTimers            = 5
-	maxBytesPerRequest = 500 * 1024
+	ipForwardHeader     = "X-Forwarded-For"
+	badEndpoint         = "FourOhFour"
+	nTimers             = 5
+	maxBytesPerRequest  = 500 * 1024
+	maxBytesErrorString = "Request larger than 500 KB, rejecting."
 )
 
 var allowedMethods = map[string]bool{
@@ -269,7 +270,7 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 		w.Header().Add("Content-Type", xmlApplicationType)
 		_, err := w.Write(xDomainContents)
 		if err != nil {
-			log.Printf("Unable to write crossdomain.xml contents: %v", err)
+			logger.WithError(err).Error("Unable to write crossdomain.xml contents")
 			return http.StatusInternalServerError
 		}
 		return http.StatusOK
@@ -278,16 +279,12 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 	case "/xarth":
 		_, err := w.Write(xarth)
 		if err != nil {
-			log.Printf("Error writing XARTH response: %v", err)
+			logger.WithError(err).Error("Error writing XARTH response")
 			return http.StatusInternalServerError
 		}
 		return http.StatusOK
 	// Accepted tracking endpoints.
-	case "/":
-		status = s.handleSpadeRequests(r, context)
-	case "/track":
-		status = s.handleSpadeRequests(r, context)
-	case "/track/":
+	case "/", "/track", "/track/":
 		status = s.handleSpadeRequests(r, context)
 	// dont track everything else
 	default:
