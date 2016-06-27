@@ -19,13 +19,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/aws/aws-sdk-go/service/sqs"
 
-	_ "github.com/twitchscience/aws_utils/logger"
+	"github.com/twitchscience/aws_utils/logger"
 	"github.com/twitchscience/scoop_protocol/spade"
 	"github.com/twitchscience/spade_edge/loggers"
 	"github.com/twitchscience/spade_edge/requests"
 
 	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/twitchscience/aws_utils/logger"
 )
 
 //spadeEdgeAuditLog defines struct of audit log in spade-edge
