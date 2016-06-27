@@ -362,13 +362,4 @@ var (
 			},
 		},
 	}
-	goodEndpoints = []string{
-		"/crossdomain.xml",
-		"/healthcheck",
-		"/xarth",
-		"/integration",
-		"/",
-		"/track",
-		"/track/",
-	}
 )

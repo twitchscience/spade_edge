@@ -25,6 +25,8 @@ import (
 	"github.com/twitchscience/spade_edge/requests"
 
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager/s3manageriface"
 )
 
 //spadeEdgeAuditLog defines struct of audit log in spade-edge
@@ -74,8 +76,8 @@ func edgeAuditLogFunc(e *spade.Event) (string, error) {
 func newS3Logger(loggerType string,
 		 cfg *loggers.S3LoggerConfig,
 		 loggingFunc loggers.EventToStringFunc,
-		 sqs *sqs.SQS,
-		 s3Uploader *s3manager.Uploader) loggers.SpadeEdgeLogger {
+		 sqs sqsiface.SQSAPI,
+		 s3Uploader s3manageriface.UploaderAPI) loggers.SpadeEdgeLogger {
 	if cfg == nil {
 		logger.Warnf("No %s logger specified", loggerType)
 		return loggers.UndefinedLogger{}
@@ -137,13 +139,13 @@ func main() {
 	hystrixStreamHandler := hystrix.NewStreamHandler()
 	hystrixStreamHandler.Start()
 	go func() {
-		err := http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
-		logger.WithError(err).Error("Error listening to port 81 with hystrixStreamHandler")
+		hystrixErr := http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
+		logger.WithError(hystrixErr).Error("Error listening to port 81 with hystrixStreamHandler")
 	}()
 
 	go func() {
-		err := http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
-		logger.WithError(err).Error("Error listening to port 8082 with http.DefaultServeMux")
+		defaultErr := http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
+		logger.WithError(defaultErr).Error("Error listening to port 8082 with http.DefaultServeMux")
 	}()
 
 	// setup server and listen

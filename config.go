@@ -24,10 +24,5 @@ func loadConfig(filename string) error {
 	}
 
 	p := json.NewDecoder(f)
-	err = p.Decode(&config)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return p.Decode(&config)
 }
