@@ -153,7 +153,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 	if err != nil {
 		if err.Error() == "http: request body too large" {
 			_ = s.StatLogger.Inc("large_request", 1, 1.0)
-			logger.Warn(maxBytesErrorString)
+			logger.WithField("sent_from", r.Header["X-Forwarded-For"]).Warn(maxBytesErrorString)
 			return http.StatusRequestEntityTooLarge
 		}
 		return http.StatusBadRequest
@@ -171,7 +171,9 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 		if err != nil {
 			if err.Error() == "http: request body too large" {
 				_ = s.StatLogger.Inc("large_request", 1, 1.0)
-				logger.Warn(maxBytesErrorString)
+				logger.WithField("sent_from", r.Header["X-Forwarded-For"]).
+					WithField("head", string(b[:1000])).
+					Warn(maxBytesErrorString)
 				return http.StatusRequestEntityTooLarge
 			}
 			return http.StatusBadRequest
@@ -218,7 +220,7 @@ const (
 	badEndpoint         = "FourOhFour"
 	nTimers             = 5
 	maxBytesPerRequest  = 500 * 1024
-	maxBytesErrorString = "Request larger than 500 KB, rejecting."
+	maxBytesErrorString = "Request larger than 500KB, rejecting."
 )
 
 var allowedMethods = map[string]bool{
