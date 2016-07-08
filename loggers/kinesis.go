@@ -102,8 +102,9 @@ func (c *KinesisLoggerConfig) Validate() error {
 }
 
 type kinesisBatchEntry struct {
-	data    []byte
-	distkey string
+	data        []byte
+	distkey     string
+	numRequests int
 }
 
 type kinesisLogger struct {
@@ -207,8 +208,9 @@ func (kl *kinesisLogger) _compress() (err error) {
 
 	compressed := buffer.Bytes()
 	kl.compressed <- kinesisBatchEntry{
-		data:    compressed,
-		distkey: kl.glob[0].Uuid,
+		data:        compressed,
+		distkey:     kl.glob[0].Uuid,
+		numRequests: len(kl.glob),
 	}
 
 	_ = kl.statter.Inc(kinesisStatsPrefix+"compress.uncompressed_size", int64(len(uncompressed)), 1)
@@ -284,13 +286,17 @@ func (kl *kinesisLogger) flush() {
 		return
 	}
 
+	totalNumRequests := 0
 	records := make([]*kinesis.PutRecordsRequestEntry, len(kl.batch))
 	for i, e := range kl.batch {
 		records[i] = &kinesis.PutRecordsRequestEntry{
 			PartitionKey: aws.String(e.distkey),
 			Data:         e.data,
 		}
+		totalNumRequests += e.numRequests
 	}
+	logger.WithField("num_requests_flushed", totalNumRequests).Info("Flushed requests to kinesis.")
+	_ = kl.statter.Inc("requests_flushed", int64(totalNumRequests), 1)
 	kl.batch = kl.batch[:0]
 	kl.batchSize = 0
 
