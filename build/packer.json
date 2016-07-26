@@ -67,8 +67,7 @@
         "sudo chmod +x /opt/science/{{user `project`}}/bin/*",
         "curl -O {{user `seeker_debian`}}",
         "sudo dpkg -i seeker_1.0.3_amd64.deb",
-        "for f in /opt/science/{{user `project`}}/config/upstart/*.conf; do sudo ln -s $f /etc/init/$(basename $f); done",
-        "sudo mv /opt/science/{{user `project`}}/config/cloudwatchlogs.conf /var/awslogs/etc/config"
+        "for f in /opt/science/{{user `project`}}/config/upstart/*.conf; do sudo ln -s $f /etc/init/$(basename $f); done"
       ]
     }
   ]
