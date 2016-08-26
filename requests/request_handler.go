@@ -142,11 +142,12 @@ func parseLastForwarder(header string) net.IP {
 }
 
 const (
-	ipForwardHeader     = "X-Forwarded-For"
-	badEndpoint         = "FourOhFour"
-	nTimers             = 5
-	maxBytesPerRequest  = 500 * 1024
-	maxBytesErrorString = "Request larger than 500KB, rejecting."
+	ipForwardHeader      = "X-Forwarded-For"
+	badEndpoint          = "FourOhFour"
+	nTimers              = 5
+	maxBytesPerRequest   = 500 * 1024
+	maxBytesErrorString  = "Request larger than 500KB, rejecting."
+	largeBodyErrorString = "http: request body too large"
 )
 
 var allowedMethods = map[string]bool{
@@ -167,7 +168,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 	var err error
 	var data string
 	defer func() {
-		if err != nil && err.Error() == "http: request body too large" {
+		if err != nil && err.Error() == largeBodyErrorString {
 			_ = s.StatLogger.Inc("large_request", 1, 1.0)
 			head := data
 			if len(head) > 100 {
@@ -183,7 +184,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 
 	err = r.ParseForm()
 	if err != nil {
-		if err.Error() == "http: request body too large" {
+		if err.Error() == largeBodyErrorString {
 			return http.StatusRequestEntityTooLarge
 		}
 		return http.StatusBadRequest
@@ -199,7 +200,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 		var b []byte
 		b, err = ioutil.ReadAll(r.Body)
 		if err != nil {
-			if err.Error() == "http: request body too large" {
+			if err.Error() == largeBodyErrorString {
 				data = string(b[:1000])
 				return http.StatusRequestEntityTooLarge
 			}
