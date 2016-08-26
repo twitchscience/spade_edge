@@ -157,6 +157,19 @@ var allowedMethods = map[string]bool{
 }
 var allowedMethodsHeader string // Comma-separated version of allowedMethods
 
+func (s *SpadeHandler) logLargeRequestError(r *http.Request, data string) {
+	_ = s.StatLogger.Inc("large_request", 1, 1.0)
+	head := data
+	if len(head) > 100 {
+		head = head[:100]
+	}
+	logger.WithField("sent_from", r.Header.Get("X-Forwarded-For")).
+		WithField("user_agent", r.Header.Get("User-Agent")).
+		WithField("content_length", r.ContentLength).
+		WithField("data_head", head).
+		Warn(maxBytesErrorString)
+}
+
 func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestContext) int {
 	statTimer := newTimerInstance()
 
@@ -165,32 +178,16 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 
 	context.Timers["ip"] = statTimer.stopTiming()
 
-	var err error
-	var data string
-	defer func() {
-		if err != nil && err.Error() == largeBodyErrorString {
-			_ = s.StatLogger.Inc("large_request", 1, 1.0)
-			head := data
-			if len(head) > 100 {
-				head = head[:100]
-			}
-			logger.WithField("sent_from", r.Header.Get("X-Forwarded-For")).
-				WithField("user_agent", r.Header.Get("User-Agent")).
-				WithField("content_length", r.ContentLength).
-				WithField("data_head", head).
-				Warn(maxBytesErrorString)
-		}
-	}()
-
-	err = r.ParseForm()
+	err := r.ParseForm()
 	if err != nil {
 		if err.Error() == largeBodyErrorString {
+			s.logLargeRequestError(r, "")
 			return http.StatusRequestEntityTooLarge
 		}
 		return http.StatusBadRequest
 	}
 
-	data = r.Form.Get("data")
+	data := r.Form.Get("data")
 	if data == "" && r.Method == "POST" {
 		// if we're here then our clients have POSTed us something weird,
 		// for example, something that maybe
@@ -201,7 +198,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 		b, err = ioutil.ReadAll(r.Body)
 		if err != nil {
 			if err.Error() == largeBodyErrorString {
-				data = string(b[:1000])
+				s.logLargeRequestError(r, string(b))
 				return http.StatusRequestEntityTooLarge
 			}
 			return http.StatusBadRequest
@@ -217,7 +214,9 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 		return http.StatusBadRequest
 	}
 
-	if r.ContentLength > maxBytesPerRequest {
+	bData := []byte(data)
+	if len(bData) > maxBytesPerRequest {
+		s.logLargeRequestError(r, data)
 		return http.StatusRequestEntityTooLarge
 	}
 
