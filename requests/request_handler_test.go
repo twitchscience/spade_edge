@@ -53,13 +53,32 @@ func (t *testEdgeLogger) Log(e *spade.Event) error {
 
 func (t *testEdgeLogger) Close() {}
 
-func TestTooBigRequest(t *testing.T) {
+func TestBigRequest(t *testing.T) {
 	SpadeHandler := makeSpadeHandler()
 	testrecorder := httptest.NewRecorder()
 	req, err := http.NewRequest(
 		"POST",
 		"http://spade.example.com/",
 		strings.NewReader(fmt.Sprintf("data=%s", longJSON)),
+	)
+	if err != nil {
+		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
+	}
+	req.Header.Add("X-Forwarded-For", "222.222.222.222")
+	SpadeHandler.ServeHTTP(testrecorder, req)
+
+	if testrecorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("%s expected code %d not %d\n", "/", http.StatusRequestEntityTooLarge, testrecorder.Code)
+	}
+}
+
+func TestTooBigRequest(t *testing.T) {
+	SpadeHandler := makeSpadeHandler()
+	testrecorder := httptest.NewRecorder()
+	req, err := http.NewRequest(
+		"POST",
+		"http://spade.example.com/",
+		strings.NewReader(fmt.Sprintf("data=%s", veryLongJSON)),
 	)
 	if err != nil {
 		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
@@ -215,6 +234,7 @@ func BenchmarkRequests(b *testing.B) {
 
 var (
 	longJSON     = `{"event":"` + strings.Repeat("BigData", 700000) + `"}`
+	veryLongJSON = `{"event":"` + strings.Repeat("BigData", 2000000) + `"}`
 	testRequests = []testTuple{
 		testTuple{
 			Request: testRequest{
