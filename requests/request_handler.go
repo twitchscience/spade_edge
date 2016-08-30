@@ -146,8 +146,7 @@ const (
 	badEndpoint          = "FourOhFour"
 	nTimers              = 5
 	maxBytesPerRequest   = 500 * 1024
-	maxBytesErrorString  = "Request larger than 500KB, rejecting."
-	largeBodyErrorString = "http: request body too large"
+	largeBodyErrorString = "http: request body too large" // Magic error string from the http pkg
 )
 
 var allowedMethods = map[string]bool{
@@ -167,7 +166,7 @@ func (s *SpadeHandler) logLargeRequestError(r *http.Request, data string) {
 		WithField("user_agent", r.Header.Get("User-Agent")).
 		WithField("content_length", r.ContentLength).
 		WithField("data_head", head).
-		Warn(maxBytesErrorString)
+		Warn("Request larger than 500KB, rejecting.")
 }
 
 func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestContext) int {
