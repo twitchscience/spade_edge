@@ -141,6 +141,34 @@ func parseLastForwarder(header string) net.IP {
 	return net.ParseIP(strings.TrimSpace(clientIP))
 }
 
+const (
+	ipForwardHeader      = "X-Forwarded-For"
+	badEndpoint          = "FourOhFour"
+	nTimers              = 5
+	maxBytesPerRequest   = 500 * 1024
+	largeBodyErrorString = "http: request body too large" // Magic error string from the http pkg
+)
+
+var allowedMethods = map[string]bool{
+	"GET":     true,
+	"POST":    true,
+	"OPTIONS": true,
+}
+var allowedMethodsHeader string // Comma-separated version of allowedMethods
+
+func (s *SpadeHandler) logLargeRequestError(r *http.Request, data string) {
+	_ = s.StatLogger.Inc("large_request", 1, 1.0)
+	head := data
+	if len(head) > 100 {
+		head = head[:100]
+	}
+	logger.WithField("sent_from", r.Header.Get("X-Forwarded-For")).
+		WithField("user_agent", r.Header.Get("User-Agent")).
+		WithField("content_length", r.ContentLength).
+		WithField("data_head", head).
+		Warn("Request larger than 500KB, rejecting.")
+}
+
 func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestContext) int {
 	statTimer := newTimerInstance()
 
@@ -151,9 +179,8 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 
 	err := r.ParseForm()
 	if err != nil {
-		if err.Error() == "http: request body too large" {
-			_ = s.StatLogger.Inc("large_request", 1, 1.0)
-			logger.WithField("sent_from", r.Header.Get("X-Forwarded-For")).Warn(maxBytesErrorString)
+		if err.Error() == largeBodyErrorString {
+			s.logLargeRequestError(r, "")
 			return http.StatusRequestEntityTooLarge
 		}
 		return http.StatusBadRequest
@@ -169,11 +196,8 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 		var b []byte
 		b, err = ioutil.ReadAll(r.Body)
 		if err != nil {
-			if err.Error() == "http: request body too large" {
-				_ = s.StatLogger.Inc("large_request", 1, 1.0)
-				logger.WithField("sent_from", r.Header.Get("X-Forwarded-For")).
-					WithField("head", string(b[:1000])).
-					Warn(maxBytesErrorString)
+			if err.Error() == largeBodyErrorString {
+				s.logLargeRequestError(r, string(b))
 				return http.StatusRequestEntityTooLarge
 			}
 			return http.StatusBadRequest
@@ -187,6 +211,12 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 	}
 	if data == "" {
 		return http.StatusBadRequest
+	}
+
+	bData := []byte(data)
+	if len(bData) > maxBytesPerRequest {
+		s.logLargeRequestError(r, data)
+		return http.StatusRequestEntityTooLarge
 	}
 
 	context.Timers["data"] = statTimer.stopTiming()
@@ -215,23 +245,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 	return http.StatusNoContent
 }
 
-const (
-	ipForwardHeader     = "X-Forwarded-For"
-	badEndpoint         = "FourOhFour"
-	nTimers             = 5
-	maxBytesPerRequest  = 500 * 1024
-	maxBytesErrorString = "Request larger than 500KB, rejecting."
-)
-
-var allowedMethods = map[string]bool{
-	"GET":     true,
-	"POST":    true,
-	"OPTIONS": true,
-}
-var allowedMethodsHeader string // Comma-separated version of allowedMethods
-
 func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxBytesPerRequest)
 	if !allowedMethods[r.Method] {
 		w.WriteHeader(http.StatusBadRequest)
 		return
