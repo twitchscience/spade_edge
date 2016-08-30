@@ -145,8 +145,7 @@ const (
 	ipForwardHeader      = "X-Forwarded-For"
 	badEndpoint          = "FourOhFour"
 	nTimers              = 5
-	maxBytesPerRequest   = 10000 * 1024
-	maxBytesPerData      = 500 * 1024
+	maxBytesPerRequest   = 500 * 1024
 	maxBytesErrorString  = "Request larger than 500KB, rejecting."
 	largeBodyErrorString = "http: request body too large"
 )
@@ -216,7 +215,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 	}
 
 	bData := []byte(data)
-	if len(bData) > maxBytesPerData {
+	if len(bData) > maxBytesPerRequest {
 		s.logLargeRequestError(r, data)
 		return http.StatusRequestEntityTooLarge
 	}
@@ -248,7 +247,6 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 }
 
 func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxBytesPerRequest)
 	if !allowedMethods[r.Method] {
 		w.WriteHeader(http.StatusBadRequest)
 		return
