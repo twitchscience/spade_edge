@@ -394,19 +394,19 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 func (kl *kinesisLogger) addToChannel(e *spade.Event) error {
 	select {
 	case kl.incoming <- e:
-		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.submitted", 1, 1.0)
+		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.submitted", 1, 0.1)
 		return nil
 	default:
-		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.fail.buffer_full", 1, 1.0)
+		_ = kl.statter.Inc(kinesisStatsPrefix+"caller.fail.buffer_full", 1, 0.1)
 		return errors.New("Channel full")
 	}
 }
 
 func (kl *kinesisLogger) logToFallback(e *spade.Event) error {
 	err := kl.fallback.Log(e)
-	_ = kl.statter.Inc(kinesisStatsPrefix+"fallback.added", 1, 1.0)
+	_ = kl.statter.Inc(kinesisStatsPrefix+"fallback.added", 1, 0.1)
 	if err != nil {
-		_ = kl.statter.Inc(kinesisStatsPrefix+"fallback.errors", 1, 1.0)
+		_ = kl.statter.Inc(kinesisStatsPrefix+"fallback.errors", 1, 0.1)
 		return fmt.Errorf("error logging to fallback logger %v", err)
 	}
 	return nil

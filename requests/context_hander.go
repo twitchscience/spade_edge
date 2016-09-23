@@ -58,9 +58,9 @@ func (r *requestContext) recordStats(statter statsd.Statter) {
 		_ = statter.Timing(strings.Join([]string{prefix, stat}, "."), duration.Nanoseconds(), 0.1)
 	}
 	for _, logger := range r.FailedLoggers {
-		_ = statter.Inc(strings.Join([]string{prefix, logger, "failed"}, "."), 1, 1.0)
+		_ = statter.Inc(strings.Join([]string{prefix, logger, "failed"}, "."), 1, 0.1)
 	}
 	if r.BadClient {
-		_ = statter.Inc("bad_client", 1, 1.0)
+		_ = statter.Inc("bad_client", 1, 0.1)
 	}
 }

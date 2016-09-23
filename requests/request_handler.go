@@ -157,7 +157,7 @@ var allowedMethods = map[string]bool{
 var allowedMethodsHeader string // Comma-separated version of allowedMethods
 
 func (s *SpadeHandler) logLargeRequestError(r *http.Request, data string) {
-	_ = s.StatLogger.Inc("large_request", 1, 1.0)
+	_ = s.StatLogger.Inc("large_request", 1, 0.1)
 	head := data
 	if len(head) > 100 {
 		head = head[:100]
