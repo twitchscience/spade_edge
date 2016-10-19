@@ -24,9 +24,9 @@ import (
 	"github.com/twitchscience/spade_edge/loggers"
 	"github.com/twitchscience/spade_edge/requests"
 
-	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager/s3manageriface"
+	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
+	"github.com/cactus/go-statsd-client/statsd"
 )
 
 //spadeEdgeAuditLog defines struct of audit log in spade-edge
@@ -74,10 +74,10 @@ func edgeAuditLogFunc(e *spade.Event) (string, error) {
 }
 
 func newS3Logger(loggerType string,
-		 cfg *loggers.S3LoggerConfig,
-		 loggingFunc loggers.EventToStringFunc,
-		 sqs sqsiface.SQSAPI,
-		 s3Uploader s3manageriface.UploaderAPI) loggers.SpadeEdgeLogger {
+	cfg *loggers.S3LoggerConfig,
+	loggingFunc loggers.EventToStringFunc,
+	sqs sqsiface.SQSAPI,
+	s3Uploader s3manageriface.UploaderAPI) loggers.SpadeEdgeLogger {
 	if cfg == nil {
 		logger.Warnf("No %s logger specified", loggerType)
 		return loggers.UndefinedLogger{}
@@ -132,7 +132,9 @@ func main() {
 	signal.Notify(sigc, syscall.SIGINT)
 	go func() {
 		<-sigc
+		logger.Info("Sigint received -- shutting down")
 		edgeLoggers.Close()
+		logger.Info("Exiting main cleanly.")
 		os.Exit(0)
 	}()
 

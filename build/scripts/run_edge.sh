@@ -3,6 +3,7 @@ set -e -u -o pipefail
 
 cd -- "$(dirname -- "$0")"
 
+source /etc/environment
 export HOST="$(curl 169.254.169.254/latest/meta-data/hostname)"
 export EDGE_VERSION="2"
 export CROSS_DOMAIN_LOCATION="/opt/science/spade_edge/config/crossdomain.xml"
