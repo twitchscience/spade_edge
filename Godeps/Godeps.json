@@ -188,6 +188,11 @@
 			"Rev": "f3cfb454f4c209e6668c95216c4744b8fddb2356"
 		},
 		{
+			"ImportPath": "github.com/stvp/rollbar",
+			"Comment": "v0.4.0-6-g3eb4713",
+			"Rev": "3eb4713e2655cd1be805795be31b3f85b74b05fd"
+		},
+		{
 			"ImportPath": "github.com/twitchscience/aws_utils/common",
 			"Rev": "fd4e8615d90a3e16c1f05566bc6ce05e56b913ef"
 		},
