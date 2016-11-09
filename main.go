@@ -119,8 +119,6 @@ func main() {
 	edgeLoggers.S3EventLogger = newS3Logger("event", config.EventsLogger, marshallingLoggingFunc, sqs, s3Uploader)
 	edgeLoggers.S3AuditLogger = newS3Logger("audit", config.AuditsLogger, edgeAuditLogFunc, sqs, s3Uploader)
 
-	logger.WithError(fmt.Errorf("some error")).Error("test error")
-
 	if config.EventStream == nil {
 		logger.Warn("No kinesis logger specified")
 	} else {
