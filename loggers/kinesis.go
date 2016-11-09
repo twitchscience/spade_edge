@@ -140,8 +140,8 @@ func NewKinesisLogger(client *kinesis.Kinesis, config KinesisLoggerConfig, fallb
 	}
 
 	kl.Add(2)
-	go kl.compressLoop()
-	go kl.submitLoop()
+	logger.Go(kl.compressLoop)
+	logger.Go(kl.submitLoop)
 	return kl, nil
 }
 
@@ -301,7 +301,7 @@ func (kl *kinesisLogger) flush() {
 	kl.batchSize = 0
 
 	kl.Add(1)
-	go kl.putRecords(records)
+	logger.Go(func() { kl.putRecords(records) })
 }
 
 func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
