@@ -91,12 +91,16 @@ func newS3Logger(loggerType string,
 }
 
 func main() {
-	logger.Init("info")
 	flag.Parse()
 	err := loadConfig(*configFilename)
 	if err != nil {
 		logger.WithError(err).Fatal("Error loading config")
 	}
+
+	logger.InitWithRollbar("info", config.RollbarToken, config.RollbarEnvironment)
+	logger.Info("Starting edge")
+	logger.CaptureDefault()
+	defer logger.LogPanic()
 
 	stats, err := initStatsd(os.Getenv("STATSD_HOSTPORT"), *statsdPrefix)
 	if err != nil {
@@ -115,6 +119,8 @@ func main() {
 	edgeLoggers.S3EventLogger = newS3Logger("event", config.EventsLogger, marshallingLoggingFunc, sqs, s3Uploader)
 	edgeLoggers.S3AuditLogger = newS3Logger("audit", config.AuditsLogger, edgeAuditLogFunc, sqs, s3Uploader)
 
+	logger.WithError(fmt.Errorf("some error")).Error("test error")
+
 	if config.EventStream == nil {
 		logger.Warn("No kinesis logger specified")
 	} else {
@@ -130,25 +136,26 @@ func main() {
 	// Trigger close on receipt of SIGINT
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT)
-	go func() {
+	logger.Go(func() {
 		<-sigc
 		logger.Info("Sigint received -- shutting down")
 		edgeLoggers.Close()
 		logger.Info("Exiting main cleanly.")
+		logger.Wait()
 		os.Exit(0)
-	}()
+	})
 
 	hystrixStreamHandler := hystrix.NewStreamHandler()
 	hystrixStreamHandler.Start()
-	go func() {
+	logger.Go(func() {
 		hystrixErr := http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
 		logger.WithError(hystrixErr).Error("Error listening to port 81 with hystrixStreamHandler")
-	}()
+	})
 
-	go func() {
+	logger.Go(func() {
 		defaultErr := http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
 		logger.WithError(defaultErr).Error("Error listening to port 8082 with http.DefaultServeMux")
-	}()
+	})
 
 	// setup server and listen
 	server := &http.Server{
