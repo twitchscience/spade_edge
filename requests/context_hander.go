@@ -21,7 +21,7 @@ func newTimerInstance() *timerInstance {
 }
 
 func (t *timerInstance) stopTiming() (r time.Duration) {
-	r = time.Now().Sub(t.start)
+	r = time.Since(t.start)
 	t.start = time.Now().UTC()
 	return
 }

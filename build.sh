@@ -20,7 +20,7 @@ SEEKER_DEBIAN="http://science.twitch.tv/debs/seeker_1.0.3_amd64.deb"
 
 go test -v ./...
 go install -v ./...
-gometalinter ./... --disable gocyclo --disable dupl --deadline 30s
+gometalinter ./... --disable gocyclo --disable dupl --disable gas --deadline 30s
 
 packer                                          \
      build -machine-readable                    \
