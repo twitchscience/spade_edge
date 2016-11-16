@@ -204,7 +204,7 @@ func (kl *kinesisLogger) _compress() (err error) {
 		return
 	}
 
-	_ = kl.statter.TimingDuration(kinesisStatsPrefix+"compress.duration", time.Now().Sub(start), 1)
+	_ = kl.statter.TimingDuration(kinesisStatsPrefix+"compress.duration", time.Since(start), 1)
 
 	compressed := buffer.Bytes()
 	kl.compressed <- kinesisBatchEntry{
@@ -320,7 +320,7 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 
 		t0 := time.Now()
 		res, err := kl.client.PutRecords(args)
-		_ = kl.statter.TimingDuration(kinesisStatsPrefix+"putrecords", time.Now().Sub(t0), 1)
+		_ = kl.statter.TimingDuration(kinesisStatsPrefix+"putrecords", time.Since(t0), 1)
 
 		if err != nil {
 			logger.WithError(err).
