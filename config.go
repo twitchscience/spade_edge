@@ -12,7 +12,6 @@ var config struct {
 	Port               string
 	CorsOrigins        []string
 	EventsLogger       *loggers.S3LoggerConfig
-	AuditsLogger       *loggers.S3LoggerConfig
 	FallbackLogger     *loggers.S3LoggerConfig
 	EventStream        *loggers.KinesisLoggerConfig
 	RollbarToken       string

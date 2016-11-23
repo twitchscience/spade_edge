@@ -43,7 +43,6 @@ const corsMaxAge = "86400" // One day
 type EdgeLoggers struct {
 	sync.WaitGroup
 	closed             chan struct{}
-	S3AuditLogger      loggers.SpadeEdgeLogger
 	S3EventLogger      loggers.SpadeEdgeLogger
 	KinesisEventLogger loggers.SpadeEdgeLogger
 }
@@ -53,7 +52,6 @@ type EdgeLoggers struct {
 func NewEdgeLoggers() *EdgeLoggers {
 	return &EdgeLoggers{
 		closed:             make(chan struct{}),
-		S3AuditLogger:      loggers.UndefinedLogger{},
 		S3EventLogger:      loggers.UndefinedLogger{},
 		KinesisEventLogger: loggers.UndefinedLogger{},
 	}
@@ -70,11 +68,9 @@ func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
 	default: // Make this a non-blocking select
 	}
 
-	auditErr := e.S3AuditLogger.Log(event)
 	eventErr := e.S3EventLogger.Log(event)
 	kinesisErr := e.KinesisEventLogger.Log(event)
 
-	context.recordLoggerAttempt(auditErr, "audit")
 	context.recordLoggerAttempt(eventErr, "event")
 	context.recordLoggerAttempt(kinesisErr, "kinesis")
 
@@ -92,7 +88,6 @@ func (e *EdgeLoggers) Close() {
 	e.Wait()
 
 	e.KinesisEventLogger.Close()
-	e.S3AuditLogger.Close()
 	e.S3EventLogger.Close()
 }
 

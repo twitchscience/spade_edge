@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
-	"fmt"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -29,12 +27,6 @@ import (
 	"github.com/cactus/go-statsd-client/statsd"
 )
 
-//spadeEdgeAuditLog defines struct of audit log in spade-edge
-type edgeAuditLog struct {
-	UUID       string
-	ReceivedAt time.Time
-}
-
 var (
 	configFilename = flag.String("config", "conf.json", "name of config file")
 	statsdPrefix   = flag.String("stat_prefix", "", "statsd prefix")
@@ -59,18 +51,6 @@ func marshallingLoggingFunc(e *spade.Event) (str string, err error) {
 		str = string(b)
 	}
 	return
-}
-
-func edgeAuditLogFunc(e *spade.Event) (string, error) {
-	newAuditLog := edgeAuditLog{
-		UUID:       e.Uuid,
-		ReceivedAt: e.ReceivedAt,
-	}
-	jsonBytes, err := json.Marshal(newAuditLog)
-	if err != nil { // create string explicitly given marshall error
-		return fmt.Sprintf("{\"UUID\":\"%s\", \"ReceivedAt\":\"%v\"}", e.Uuid, e.ReceivedAt), err
-	}
-	return string(jsonBytes), nil
 }
 
 func newS3Logger(loggerType string,
@@ -117,7 +97,6 @@ func main() {
 
 	edgeLoggers := requests.NewEdgeLoggers()
 	edgeLoggers.S3EventLogger = newS3Logger("event", config.EventsLogger, marshallingLoggingFunc, sqs, s3Uploader)
-	edgeLoggers.S3AuditLogger = newS3Logger("audit", config.AuditsLogger, edgeAuditLogFunc, sqs, s3Uploader)
 
 	if config.EventStream == nil {
 		logger.Warn("No kinesis logger specified")
