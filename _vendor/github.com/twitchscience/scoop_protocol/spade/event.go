@@ -15,7 +15,7 @@ import (
 // move one without the other. Recommended ways to solve this sort of
 // thing in Protobuf and Thrift is to have your namespace dicate version
 const PROTOCOL_VERSION = 3
-const COMPRESSION_VERSION byte = 0
+const COMPRESSION_VERSION byte = 1
 
 type Event struct {
 	ReceivedAt    time.Time `json:"receivedAt"`
@@ -65,6 +65,38 @@ func Compress(e *Event) ([]byte, error) {
 	}
 
 	return compressed.Bytes(), nil
+}
+
+func Deglob(glob []byte) (events []*Event, err error) {
+	compressed := bytes.NewBuffer(glob)
+
+	v, err := compressed.ReadByte()
+	if err != nil {
+		return nil, fmt.Errorf("error reading version byte: %s", err)
+	}
+	if v != COMPRESSION_VERSION {
+		return nil, fmt.Errorf("unknown version: got %v expected %v", v, COMPRESSION_VERSION)
+	}
+
+	deflator := flate.NewReader(compressed)
+	defer func() {
+		if cerr := deflator.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("error closing glob reader: %v", cerr)
+		}
+	}()
+
+	var decompressed bytes.Buffer
+	_, err = io.Copy(&decompressed, deflator)
+	if err != nil {
+		return nil, fmt.Errorf("error decompressing: %v", err)
+	}
+
+	err = json.Unmarshal(decompressed.Bytes(), &events)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling: %v", err)
+	}
+
+	return
 }
 
 func Decompress(c []byte) (*Event, error) {

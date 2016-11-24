@@ -379,14 +379,16 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 	// because that is what we started with. This is potentially wasteful but this should be the
 	// rare case, so the code optimized for the common case
 	for _, record := range args.Records {
-		e, err := spade.Decompress(record.Data)
+		events, err := spade.Deglob(record.Data)
 		if err != nil {
-			logger.WithError(err).Error("Error calling DecompressEvent")
+			logger.WithError(err).Error("Error calling Deglob")
 			continue
 		}
-		err = kl.logToFallback(e)
-		if err != nil {
-			logger.WithError(err).Error("Error logging failed kinesis event to fallback logger")
+		for _, e := range events {
+			err = kl.logToFallback(e)
+			if err != nil {
+				logger.WithError(err).Error("Error logging failed kinesis event to fallback logger")
+			}
 		}
 	}
 }
