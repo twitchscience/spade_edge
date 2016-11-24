@@ -34,4 +34,7 @@ packer                                          \
      -var "binary_dir"=${GOPATH}/bin            \
      -var "scripts_dir"=build/scripts           \
      -var "seeker_debian=${SEEKER_DEBIAN}"      \
-     build/packer.json
+     build/packer.json | tee build.log
+
+AMIREF=`grep 'amazon-ebs,artifact,0,id,' build.log`
+echo ${AMIREF##*:} > amireference
