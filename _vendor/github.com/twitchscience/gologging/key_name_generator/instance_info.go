@@ -28,7 +28,7 @@ func BuildInstanceInfo(fetcher InstanceInfoFetcher, serviceName string, loggingD
 func (e *EnvInstanceFetcher) GetHost() string {
 	host := os.Getenv("HOST")
 	if host == "" {
-		host = "UNKNOWNdd"
+		host = "UNKNOWN"
 	}
 	return host
 }
@@ -36,7 +36,7 @@ func (e *EnvInstanceFetcher) GetHost() string {
 func (e *EnvInstanceFetcher) GetClusterName() string {
 	cluster := os.Getenv("CLOUD_CLUSTER")
 	if cluster == "" {
-		cluster = "UNKNOWNdd"
+		cluster = "UNKNOWN"
 	}
 	return cluster
 }
@@ -44,7 +44,7 @@ func (e *EnvInstanceFetcher) GetClusterName() string {
 func (e *EnvInstanceFetcher) GetAutoScaleGroup() string {
 	asg := os.Getenv("CLOUD_AUTO_SCALE_GROUP")
 	if asg == "" {
-		asg = "UNKNOWNdd"
+		asg = "UNKNOWN"
 	}
 	return asg
 }
