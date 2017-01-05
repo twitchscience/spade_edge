@@ -170,6 +170,7 @@ func (kl *kinesisLogger) addToGlob(e *spade.Event) {
 func (kl *kinesisLogger) compress() {
 	err := kl._compress()
 	if err != nil {
+		logger.WithError(err).Error("Failed to compress globs")
 		for _, e := range kl.glob {
 			_ = kl.logToFallback(e)
 		}
@@ -421,6 +422,7 @@ func (kl *kinesisLogger) Log(e *spade.Event) error {
 	if err == nil {
 		return nil
 	}
+	logger.WithError(err).Error("Problem adding event to channel")
 
 	fallbackErr := kl.logToFallback(e)
 	if fallbackErr == nil {
