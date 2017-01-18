@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/net/netutil"
+
 	"github.com/afex/hystrix-go/hystrix"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -31,6 +33,8 @@ var (
 	configFilename = flag.String("config", "conf.json", "name of config file")
 	statsdPrefix   = flag.String("stat_prefix", "", "statsd prefix")
 )
+
+const maxConnections = 8000
 
 func initStatsd(statsdHostport, prefix string) (statsd.Statter, error) {
 	switch {
@@ -134,6 +138,19 @@ func main() {
 		logger.WithError(defaultErr).Error("Error listening to port 8082 with http.DefaultServeMux")
 	})
 
+	l, err := net.Listen("tcp", config.Port)
+
+	if err != nil {
+		logger.Errorf("Error creating listener: %v", err)
+		return
+	}
+	ll := netutil.LimitListener(l, maxConnections)
+	defer func() {
+		if cerr := ll.Close(); cerr != nil {
+			logger.WithError(cerr).Error("Error closing listener")
+		}
+	}()
+
 	// setup server and listen
 	server := &http.Server{
 		Addr:           config.Port,
@@ -143,6 +160,6 @@ func main() {
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
-	err = server.ListenAndServe()
-	logger.WithError(err).Fatal("Error serving")
+	err = server.Serve(ll)
+	logger.WithError(err).Error("Error serving")
 }
