@@ -129,13 +129,13 @@ func main() {
 	hystrixStreamHandler := hystrix.NewStreamHandler()
 	hystrixStreamHandler.Start()
 	logger.Go(func() {
-		hystrixErr := http.ListenAndServe(net.JoinHostPort("", "81"), hystrixStreamHandler)
+		hystrixErr := http.ListenAndServe(":81", hystrixStreamHandler)
 		logger.WithError(hystrixErr).Error("Error listening to port 81 with hystrixStreamHandler")
 	})
 
 	logger.Go(func() {
-		defaultErr := http.ListenAndServe(net.JoinHostPort("", "8082"), http.DefaultServeMux)
-		logger.WithError(defaultErr).Error("Error listening to port 8082 with http.DefaultServeMux")
+		logger.WithError(http.ListenAndServe(":7766", http.DefaultServeMux)).
+			Error("Serving pprof failed")
 	})
 
 	l, err := net.Listen("tcp", config.Port)
