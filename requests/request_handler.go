@@ -181,6 +181,10 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 		return http.StatusBadRequest
 	}
 
+	if len(r.RequestURI) > 8192 {
+		_ = s.StatLogger.Inc("large_URI", 1, 1)
+	}
+
 	data := r.Form.Get("data")
 	if data == "" && r.Method == "POST" {
 		// if we're here then our clients have POSTed us something weird,
