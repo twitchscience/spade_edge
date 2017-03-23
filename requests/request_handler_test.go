@@ -29,9 +29,15 @@ type testRequest struct {
 	Body        string
 }
 
+type testHeader struct {
+	Header string
+	Value  string
+}
+
 type testResponse struct {
-	Code int
-	Body string
+	Code    int
+	Body    string
+	Headers []testHeader
 }
 
 type testTuple struct {
@@ -129,6 +135,13 @@ func TestEndPoints(t *testing.T) {
 		}
 		if testrecorder.Body.String() != tt.Response.Body {
 			t.Fatalf("%s expected body %s not %s\n", tt.Request.Endpoint, tt.Response.Body, testrecorder.Body.String())
+		}
+
+		for _, expectedHeader := range tt.Response.Headers {
+			val := testrecorder.Header().Get(expectedHeader.Header)
+			if expectedHeader.Value != val {
+				t.Fatalf("%[1]s expected header '%[2]s: %[3]s' not '%[2]s: %[4]s'\n", tt.Request.Endpoint, expectedHeader.Header, expectedHeader.Value, val)
+			}
 		}
 
 		if tt.Expectation != "" {
@@ -359,6 +372,27 @@ var (
 			},
 			Response: testResponse{
 				Code: http.StatusNotFound,
+			},
+		},
+		testTuple{
+			Expectation: "eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19",
+			Request: testRequest{
+				Endpoint: "track/?data=eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19&img=1",
+				Verb:     "GET",
+			},
+			Response: testResponse{
+				Code: http.StatusOK,
+				Body: string(transparentPixel),
+				Headers: []testHeader{
+					{
+						Header: "Cache-Control",
+						Value:  "no-cache, max-age=0",
+					},
+					{
+						Header: "Content-Type",
+						Value:  "image/gif",
+					},
+				},
 			},
 		},
 	}
