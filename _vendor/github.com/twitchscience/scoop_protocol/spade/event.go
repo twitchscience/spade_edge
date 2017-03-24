@@ -14,7 +14,7 @@ import (
 // defined in the clients of this code, as it current stands we cannot
 // move one without the other. Recommended ways to solve this sort of
 // thing in Protobuf and Thrift is to have your namespace dicate version
-const PROTOCOL_VERSION = 3
+const PROTOCOL_VERSION = 4
 const COMPRESSION_VERSION byte = 1
 
 type Event struct {
@@ -23,16 +23,18 @@ type Event struct {
 	XForwardedFor string    `json:"xForwardedFor"`
 	Uuid          string    `json:"uuid"`
 	Data          string    `json:"data"`
+	UserAgent     string    `json:"userAgent"`
 	Version       int       `json:"recordversion"`
 }
 
-func NewEvent(receivedAt time.Time, clientIp net.IP, xForwardedFor, uuid, data string) *Event {
+func NewEvent(receivedAt time.Time, clientIp net.IP, xForwardedFor, uuid, data, userAgent string) *Event {
 	return &Event{
 		ReceivedAt:    receivedAt,
 		ClientIp:      clientIp,
 		XForwardedFor: xForwardedFor,
 		Uuid:          uuid,
 		Data:          data,
+		UserAgent:     userAgent,
 		Version:       PROTOCOL_VERSION,
 	}
 }

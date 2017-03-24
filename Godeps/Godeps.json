@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/twitchscience/spade_edge",
 	"GoVersion": "go1.6",
-	"GodepVersion": "v74",
+	"GodepVersion": "v79",
 	"Deps": [
 		{
 			"ImportPath": "github.com/afex/hystrix-go/hystrix",
@@ -237,7 +237,7 @@
 		},
 		{
 			"ImportPath": "github.com/twitchscience/scoop_protocol/spade",
-			"Rev": "d4cd692d1fba6da0e1b27491e7aff5ed4cc802f4"
+			"Rev": "ea800add210eef3b689382283dcbd0584e2a1ffa"
 		},
 		{
 			"ImportPath": "golang.org/x/net/netutil",

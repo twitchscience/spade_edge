@@ -149,6 +149,7 @@ const (
 	nTimers              = 5
 	maxBytesPerRequest   = 500 * 1024
 	largeBodyErrorString = "http: request body too large" // Magic error string from the http pkg
+	maxUserAgentBytes    = 1024
 )
 
 var allowedMethods = map[string]bool{
@@ -160,15 +161,29 @@ var allowedMethodsHeader string // Comma-separated version of allowedMethods
 
 func (s *SpadeHandler) logLargeRequestError(r *http.Request, data string) {
 	_ = s.StatLogger.Inc("large_request", 1, 0.1)
-	head := data
-	if len(head) > 100 {
-		head = head[:100]
-	}
+	head := truncate(data, 100)
 	logger.WithField("sent_from", r.Header.Get("X-Forwarded-For")).
 		WithField("user_agent", r.Header.Get("User-Agent")).
 		WithField("content_length", r.ContentLength).
 		WithField("data_head", head).
 		Warn("Request larger than 500KB, rejecting.")
+}
+
+func (s *SpadeHandler) logLargeUserAgentError(r *http.Request, data string) {
+	_ = s.StatLogger.Inc("large_user_agent", 1, 0.1)
+	head := truncate(data, 100)
+	userAgent := truncate(r.Header.Get("User-Agent"), 100)
+	logger.WithField("user_agent", userAgent).
+		WithField("data_head", head).
+		Warn(fmt.Sprintf("User agent larger than %d bytes, dropping.", maxUserAgentBytes))
+}
+
+func truncate(s string, max int) string {
+	if len(s) > max {
+		return s[:max]
+	}
+
+	return s
 }
 
 func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestContext) int {
@@ -231,12 +246,23 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 	uuid := fmt.Sprintf("%s-%08x-%08x", s.instanceID, context.Now.Unix(), count)
 	context.Timers["uuid"] = statTimer.stopTiming()
 
+	var userAgent string
+	if r.URL.Query().Get("ua") == "1" {
+		userAgent = r.Header.Get("User-Agent")
+		// anything over the max is likely garbage data
+		if len(userAgent) > maxUserAgentBytes {
+			s.logLargeUserAgentError(r, data)
+			userAgent = ""
+		}
+	}
+
 	event := spade.NewEvent(
 		context.Now,
 		clientIP,
 		xForwardedFor,
 		uuid,
 		data,
+		userAgent,
 	)
 
 	defer func() {

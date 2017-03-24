@@ -27,6 +27,7 @@ type testRequest struct {
 	Verb        string
 	ContentType string
 	Body        string
+	UserAgent   string
 }
 
 type testHeader struct {
@@ -41,9 +42,10 @@ type testResponse struct {
 }
 
 type testTuple struct {
-	Expectation string
-	Request     testRequest
-	Response    testResponse
+	DataExpectation      string
+	UserAgentExpectation string
+	Request              testRequest
+	Response             testResponse
 }
 
 var epoch = time.Unix(0, 0)
@@ -129,6 +131,9 @@ func TestEndPoints(t *testing.T) {
 		if tt.Request.ContentType != "" {
 			req.Header.Add("Content-Type", tt.Request.ContentType)
 		}
+		if tt.Request.UserAgent != "" {
+			req.Header.Add("User-Agent", tt.Request.UserAgent)
+		}
 		SpadeHandler.ServeHTTP(testrecorder, req)
 		if testrecorder.Code != tt.Response.Code {
 			t.Fatalf("%s expected code %d not %d\n", tt.Request.Endpoint, tt.Response.Code, testrecorder.Code)
@@ -144,13 +149,14 @@ func TestEndPoints(t *testing.T) {
 			}
 		}
 
-		if tt.Expectation != "" {
+		if tt.DataExpectation != "" {
 			expectedEvents = append(expectedEvents, spade.Event{
 				ReceivedAt:    fixedTime.UTC(),
 				ClientIp:      fixedIP,
 				XForwardedFor: fixedIP.String(),
 				Uuid:          fmt.Sprintf("%s-%08x-%08x", instanceID, fixedTime.UTC().Unix(), uuidCounter),
-				Data:          tt.Expectation,
+				Data:          tt.DataExpectation,
+				UserAgent:     tt.UserAgentExpectation,
 				Version:       spade.PROTOCOL_VERSION,
 			})
 			uuidCounter++
@@ -227,7 +233,9 @@ func BenchmarkRequests(b *testing.B) {
 }
 
 var (
-	longJSON     = `{"event":"` + strings.Repeat("BigData", 700000) + `"}`
+	longJSON      = `{"event":"` + strings.Repeat("BigData", 700000) + `"}`
+	longUserAgent = strings.Repeat("BigUserAgent", maxUserAgentBytes)
+
 	testRequests = []testTuple{
 		testTuple{
 			Request: testRequest{
@@ -249,7 +257,7 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "blah",
+			DataExpectation: "blah",
 			Request: testRequest{
 				Endpoint: "track?data=blah",
 				Verb:     "GET",
@@ -259,7 +267,7 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "blah",
+			DataExpectation: "blah",
 			Request: testRequest{
 				Endpoint: "track/?data=blah",
 				Verb:     "GET",
@@ -269,7 +277,7 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "eyJldmVudCI6ImhlbGxvIn0",
+			DataExpectation: "eyJldmVudCI6ImhlbGxvIn0",
 			Request: testRequest{
 				Endpoint: "track/?data=eyJldmVudCI6ImhlbGxvIn0&ip=1",
 				Verb:     "GET",
@@ -288,7 +296,7 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "blat",
+			DataExpectation: "blat",
 			Request: testRequest{
 				Endpoint: "?data=blat",
 				Verb:     "GET",
@@ -298,7 +306,7 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "blag",
+			DataExpectation: "blag",
 			Request: testRequest{
 				Verb:        "POST",
 				ContentType: "application/x-randomfoofoo",
@@ -312,7 +320,7 @@ var (
 		// hopefully these should be incredibly rare. They do not parse at
 		// our processor level
 		testTuple{
-			Expectation: "ip=&data=blagi",
+			DataExpectation: "ip=&data=blagi",
 			Request: testRequest{
 				Verb:        "POST",
 				ContentType: "application/x-randomfoofoo",
@@ -323,7 +331,7 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "bleck",
+			DataExpectation: "bleck",
 			Request: testRequest{
 				Verb:        "POST",
 				ContentType: "application/x-www-form-urlencoded",
@@ -334,7 +342,7 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "blog",
+			DataExpectation: "blog",
 			Request: testRequest{
 				Verb:        "POST",
 				ContentType: "application/x-www-form-urlencoded",
@@ -345,7 +353,7 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "blem",
+			DataExpectation: "blem",
 			Request: testRequest{
 				Verb:     "POST",
 				Endpoint: "track?ip=&data=blem",
@@ -355,7 +363,7 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "blamo",
+			DataExpectation: "blamo",
 			Request: testRequest{
 				Verb:     "GET",
 				Endpoint: "track?ip=&data=blamo",
@@ -375,10 +383,69 @@ var (
 			},
 		},
 		testTuple{
-			Expectation: "eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19",
+			DataExpectation: "eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19",
 			Request: testRequest{
 				Endpoint: "track/?data=eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19&img=1",
 				Verb:     "GET",
+			},
+			Response: testResponse{
+				Code: http.StatusOK,
+				Body: string(transparentPixel),
+				Headers: []testHeader{
+					{
+						Header: "Cache-Control",
+						Value:  "no-cache, max-age=0",
+					},
+					{
+						Header: "Content-Type",
+						Value:  "image/gif",
+					},
+				},
+			},
+		},
+		testTuple{
+			DataExpectation:      "eyJldmVudCI6ImhlbGxvIn0",
+			UserAgentExpectation: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
+			Request: testRequest{
+				Endpoint:  "track/?data=eyJldmVudCI6ImhlbGxvIn0&ua=1",
+				Verb:      "GET",
+				UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
+			},
+			Response: testResponse{
+				Code: http.StatusNoContent,
+			},
+		},
+		testTuple{
+			DataExpectation:      "eyJldmVudCI6ImhlbGxvIn0",
+			UserAgentExpectation: "",
+			Request: testRequest{
+				Endpoint:  "track/?data=eyJldmVudCI6ImhlbGxvIn0",
+				Verb:      "GET",
+				UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
+			},
+			Response: testResponse{
+				Code: http.StatusNoContent,
+			},
+		},
+		testTuple{
+			DataExpectation:      "eyJldmVudCI6ImhlbGxvIn0",
+			UserAgentExpectation: "",
+			Request: testRequest{
+				Endpoint:  "track/?data=eyJldmVudCI6ImhlbGxvIn0&ua=1",
+				Verb:      "GET",
+				UserAgent: longUserAgent,
+			},
+			Response: testResponse{
+				Code: http.StatusNoContent,
+			},
+		},
+		testTuple{
+			DataExpectation:      "eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19",
+			UserAgentExpectation: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
+			Request: testRequest{
+				Endpoint:  "track/?data=eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19&img=1&ua=1",
+				Verb:      "GET",
+				UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
 			},
 			Response: testResponse{
 				Code: http.StatusOK,
