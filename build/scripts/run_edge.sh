@@ -13,9 +13,9 @@ export GOMAXPROCS="4"
 export CONFIG_PREFIX="s3://$S3_CONFIG_BUCKET/$VPC_SUBNET_TAG/$CLOUD_APP/${CLOUD_ENVIRONMENT}"
 export AWS_REGION=us-west-2
 export AWS_DEFAULT_REGION=$AWS_REGION # aws-cli uses AWS_DEFAULT_REGION, aws-sdk-go uses AWS_REGION
-aws s3 cp "$CONFIG_PREFIX/conf.sh" conf.sh
-aws s3 cp "$CONFIG_PREFIX/conf.json" conf.json
-source conf.sh
+aws s3 cp "$CONFIG_PREFIX/conf.sh" ../config/runtime/conf.sh
+aws s3 cp "$CONFIG_PREFIX/conf.json" ../config/runtime/conf.json
+source ../config/runtime/conf.sh
 
-exec ./spade_edge -config conf.json \
+exec ./spade_edge -config ../config/runtime/conf.json \
                   -stat_prefix "${OWNER}.${CLOUD_APP}.${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT}}.${EC2_REGION}.${CLOUD_AUTO_SCALE_GROUP##*-}"

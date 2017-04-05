@@ -69,7 +69,13 @@
         "sudo chmod +x /opt/science/{{user `project`}}/bin/*",
         "curl -O {{user `seeker_debian`}}",
         "sudo dpkg -i seeker_1.0.3_amd64.deb",
-        "for f in /opt/science/{{user `project`}}/config/upstart/*.conf; do sudo ln -s $f /etc/init/$(basename $f); done"
+        "for f in /opt/science/{{user `project`}}/config/upstart/*.conf; do sudo ln -s $f /etc/init/$(basename $f); done",
+
+        "sudo groupadd edge",
+        "sudo mkdir /opt/science/{{user `project`}}/config/runtime",
+        "sudo chgrp edge /opt/science/{{user `project`}}/config/runtime",
+        "sudo chmod g+w /opt/science/{{user `project`}}/config/runtime",
+        "sudo setcap 'cap_net_bind_service=+ep' /opt/science/{{user `project`}}/bin/spade_edge"
       ]
     }
   ]

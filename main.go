@@ -91,7 +91,10 @@ func main() {
 		logger.WithError(err).Fatal("Statsd configuration error")
 	}
 
-	session := session.New()
+	session, err := session.NewSession()
+	if err != nil {
+		logger.WithError(err).Fatal("Session not created")
+	}
 	sqs := sqs.New(session)
 	s3Uploader := s3manager.NewUploader(session)
 	instanceID, err := ec2metadata.New(session).GetMetadata("instance-id")
