@@ -1,3 +1,11 @@
+/*
+Spade Edge is the data entry point to the Spade pipeline. It is a
+minimally-validating, write-only API server which annotates events and writes
+them to Kinesis and S3. The service is typically scaled behind an Elastic Load
+Balancer, which handles concerns such as HTTPS. Standard requests result in a
+204 No Content, and the persisted event is annotated with source IP, generated UUID,
+and server time.
+*/
 package main
 
 import (
