@@ -164,8 +164,13 @@ func main() {
 
 	// setup server and listen
 	server := &http.Server{
-		Addr:           config.Port,
-		Handler:        requests.NewSpadeHandler(stats, edgeLoggers, instanceID, config.CorsOrigins),
+		Addr: config.Port,
+		Handler: requests.NewSpadeHandler(
+			stats,
+			edgeLoggers,
+			instanceID,
+			config.CorsOrigins,
+			config.EventInURISamplingRate),
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1MB

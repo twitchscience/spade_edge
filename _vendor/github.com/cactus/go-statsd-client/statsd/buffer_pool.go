@@ -1,3 +1,7 @@
+// Copyright (c) 2012-2016 Eli Janssen
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file.
+
 package statsd
 
 import (
@@ -12,7 +16,7 @@ type bufferPool struct {
 func newBufferPool() *bufferPool {
 	return &bufferPool{
 		&sync.Pool{New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, 0, 1500))
+			return bytes.NewBuffer(make([]byte, 0, 1700))
 		}},
 	}
 }

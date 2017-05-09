@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/cactus/go-statsd-client/statsd/statsdtest"
 	"github.com/twitchscience/scoop_protocol/spade"
 )
 
 const (
-	instanceID = "i-test"
+	instanceID     = "i-test"
+	eventInURIStat = "event_in_URI"
 )
 
 type testEdgeLogger struct {
@@ -62,7 +64,8 @@ func (t *testEdgeLogger) Log(e *spade.Event) error {
 func (t *testEdgeLogger) Close() {}
 
 func TestTooBigRequest(t *testing.T) {
-	SpadeHandler := makeSpadeHandler()
+	s, _ := statsd.NewNoop()
+	spadeHandler := makeSpadeHandler(s)
 	testrecorder := httptest.NewRecorder()
 	req, err := http.NewRequest(
 		"POST",
@@ -73,7 +76,7 @@ func TestTooBigRequest(t *testing.T) {
 		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
 	}
 	req.Header.Add("X-Forwarded-For", "222.222.222.222")
-	SpadeHandler.ServeHTTP(testrecorder, req)
+	spadeHandler.ServeHTTP(testrecorder, req)
 
 	if testrecorder.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("%s expected code %d not %d\n", "/", http.StatusRequestEntityTooLarge, testrecorder.Code)
@@ -101,17 +104,18 @@ func TestParseLastForwarder(t *testing.T) {
 
 var fixedTime = time.Date(2014, 5, 2, 19, 34, 1, 0, time.UTC)
 
-func makeSpadeHandler() *SpadeHandler {
-	c, _ := statsd.NewNoop()
+func makeSpadeHandler(s statsd.Statter) *SpadeHandler {
+	c := s
 	loggers := NewEdgeLoggers()
 	loggers.S3EventLogger = &testEdgeLogger{}
-	SpadeHandler := NewSpadeHandler(c, loggers, instanceID, []string{""})
-	SpadeHandler.Time = func() time.Time { return fixedTime }
-	return SpadeHandler
+	spadeHandler := NewSpadeHandler(c, loggers, instanceID, []string{""}, 1)
+	spadeHandler.Time = func() time.Time { return fixedTime }
+	return spadeHandler
 }
 
 func TestEndPoints(t *testing.T) {
-	SpadeHandler := makeSpadeHandler()
+	s, _ := statsd.NewNoop()
+	spadeHandler := makeSpadeHandler(s)
 	var expectedEvents []spade.Event
 	fixedIP := net.ParseIP("222.222.222.222")
 
@@ -134,7 +138,7 @@ func TestEndPoints(t *testing.T) {
 		if tt.Request.UserAgent != "" {
 			req.Header.Add("User-Agent", tt.Request.UserAgent)
 		}
-		SpadeHandler.ServeHTTP(testrecorder, req)
+		spadeHandler.ServeHTTP(testrecorder, req)
 		if testrecorder.Code != tt.Response.Code {
 			t.Fatalf("%s expected code %d not %d\n", tt.Request.Endpoint, tt.Response.Code, testrecorder.Code)
 		}
@@ -163,7 +167,7 @@ func TestEndPoints(t *testing.T) {
 		}
 	}
 
-	logger := SpadeHandler.EdgeLoggers.S3EventLogger.(*testEdgeLogger)
+	logger := spadeHandler.EdgeLoggers.S3EventLogger.(*testEdgeLogger)
 	for idx, byteLog := range logger.events {
 		var ev spade.Event
 		err := spade.Unmarshal(byteLog, &ev)
@@ -177,7 +181,8 @@ func TestEndPoints(t *testing.T) {
 }
 
 func TestHandle(t *testing.T) {
-	SpadeHandler := makeSpadeHandler()
+	s, _ := statsd.NewNoop()
+	spadeHandler := makeSpadeHandler(s)
 	for _, tt := range testRequests {
 		testrecorder := httptest.NewRecorder()
 		req, err := http.NewRequest(
@@ -199,7 +204,7 @@ func TestHandle(t *testing.T) {
 			IPHeader: ipForwardHeader,
 			Timers:   make(map[string]time.Duration, nTimers),
 		}
-		status := SpadeHandler.serve(testrecorder, req, context)
+		status := spadeHandler.serve(testrecorder, req, context)
 
 		if status != tt.Response.Code {
 			t.Fatalf("%s expected code %d not %d\n", tt.Request.Endpoint, tt.Response.Code, testrecorder.Code)
@@ -207,8 +212,54 @@ func TestHandle(t *testing.T) {
 	}
 }
 
+func expectURICountStat(tt *testTuple) bool {
+	return strings.Contains(tt.Request.Endpoint, "data")
+}
+
+func hasURICountStat(rs *statsdtest.RecordingSender) bool {
+	for _, stat := range rs.GetSent() {
+		if stat.Stat == eventInURIStat {
+			return true
+		}
+	}
+	return false
+}
+
+func TestURICounting(t *testing.T) {
+	rs := statsdtest.NewRecordingSender()
+	statter, _ := statsd.NewClientWithSender(rs, "") // error is only for nil sender
+	spadeHandler := makeSpadeHandler(statter)
+	for idx, tt := range testRequests {
+		rs.ClearSent()
+
+		testRecorder := httptest.NewRecorder()
+		req, err := http.NewRequest(
+			tt.Request.Verb,
+			"http://spade.example.com/"+tt.Request.Endpoint,
+			strings.NewReader(tt.Request.Body))
+		if err != nil {
+			t.Fatalf("Failed to build request %s; error: %s", tt.Request.Endpoint, err)
+		}
+		req.Header.Add("X-Forwarded-For", "222.222.222.222")
+		spadeHandler.ServeHTTP(testRecorder, req)
+
+		if expectURICountStat(&tt) {
+			if !hasURICountStat(rs) {
+				t.Errorf("Expected count stat for %s request %d with body %#v, but none was made",
+					tt.Request.Verb, idx, tt.Request.Body)
+			}
+		} else {
+			if hasURICountStat(rs) {
+				t.Errorf("Unexpected count stat for %s request %d with body %#v",
+					tt.Request.Verb, idx, tt.Request.Body)
+			}
+		}
+	}
+}
+
 func BenchmarkRequests(b *testing.B) {
-	SpadeHandler := makeSpadeHandler()
+	s, _ := statsd.NewNoop()
+	spadeHandler := makeSpadeHandler(s)
 	reqGet, err := http.NewRequest("GET", "http://spade.twitch.tv/?data=blah", nil)
 	if err != nil {
 		b.Fatalf("Failed to build request error: %s\n", err)
@@ -224,9 +275,9 @@ func BenchmarkRequests(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if i%2 == 0 {
-			SpadeHandler.ServeHTTP(testrecorder, reqPost)
+			spadeHandler.ServeHTTP(testrecorder, reqPost)
 		} else {
-			SpadeHandler.ServeHTTP(testrecorder, reqGet)
+			spadeHandler.ServeHTTP(testrecorder, reqGet)
 		}
 	}
 	b.ReportAllocs()

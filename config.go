@@ -8,14 +8,15 @@ import (
 )
 
 var config struct {
-	LoggingDir         string
-	Port               string
-	CorsOrigins        []string
-	EventsLogger       *loggers.S3LoggerConfig
-	FallbackLogger     *loggers.S3LoggerConfig
-	EventStream        *loggers.KinesisLoggerConfig
-	RollbarToken       string
-	RollbarEnvironment string
+	LoggingDir             string
+	Port                   string
+	CorsOrigins            []string
+	EventsLogger           *loggers.S3LoggerConfig
+	FallbackLogger         *loggers.S3LoggerConfig
+	EventStream            *loggers.KinesisLoggerConfig
+	RollbarToken           string
+	RollbarEnvironment     string
+	EventInURISamplingRate float32
 }
 
 func loadConfig(filename string) error {

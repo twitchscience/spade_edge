@@ -184,8 +184,8 @@
 		},
 		{
 			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
-			"Comment": "v3.0.2-1-gda59e2d",
-			"Rev": "da59e2d6fa324a07d6569865637b11efa483d0ee"
+			"Comment": "v3.1.0-4-gd8eabe0",
+			"Rev": "d8eabe07bc70ff9ba6a56836cde99d1ea3d005f7"
 		},
 		{
 			"ImportPath": "github.com/go-ini/ini",

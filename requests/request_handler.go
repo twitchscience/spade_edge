@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -110,16 +111,19 @@ type SpadeHandler struct {
 	// uuid generation. eventCount is read and written from multiple go routines
 	// so any access to it should go through sync/atomic
 	eventCount uint64
+
+	eventInURISamplingRate float32
 }
 
 // NewSpadeHandler returns a new instance of SpadeHandler
-func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, instanceID string, CORSOrigins []string) *SpadeHandler {
+func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, instanceID string, CORSOrigins []string, eventInURISamplingRate float32) *SpadeHandler {
 	h := &SpadeHandler{
-		StatLogger:  stats,
-		EdgeLoggers: loggers,
-		Time:        time.Now,
-		instanceID:  instanceID,
-		corsOrigins: make(map[string]bool),
+		StatLogger:             stats,
+		EdgeLoggers:            loggers,
+		Time:                   time.Now,
+		instanceID:             instanceID,
+		corsOrigins:            make(map[string]bool),
+		eventInURISamplingRate: eventInURISamplingRate,
 	}
 
 	for _, origin := range CORSOrigins {
@@ -186,7 +190,7 @@ func truncate(s string, max int) string {
 	return s
 }
 
-func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestContext) int {
+func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, context *requestContext) int {
 	statTimer := newTimerInstance()
 
 	xForwardedFor := r.Header.Get(context.IPHeader)
@@ -201,6 +205,10 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 			return http.StatusRequestEntityTooLarge
 		}
 		return http.StatusBadRequest
+	}
+
+	if _, ok := values["data"]; ok {
+		_ = s.StatLogger.Inc("event_in_URI", 1, s.eventInURISamplingRate)
 	}
 
 	if len(r.RequestURI) > 8192 {
@@ -247,7 +255,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 	context.Timers["uuid"] = statTimer.stopTiming()
 
 	var userAgent string
-	if r.URL.Query().Get("ua") == "1" {
+	if values.Get("ua") == "1" {
 		userAgent = r.Header.Get("User-Agent")
 		// anything over the max is likely garbage data
 		if len(userAgent) > maxUserAgentBytes {
@@ -275,7 +283,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, context *requestCont
 		return http.StatusBadRequest
 	}
 
-	if shouldWritePixel(r) {
+	if shouldWritePixel(values) {
 		return http.StatusOK
 	}
 
@@ -338,9 +346,10 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 		return http.StatusOK
 	// Accepted tracking endpoints.
 	case "/", "/track", "/track/":
-		status = s.handleSpadeRequests(r, context)
+		values := r.URL.Query()
+		status = s.handleSpadeRequests(r, values, context)
 
-		if shouldWritePixel(r) {
+		if shouldWritePixel(values) {
 			if err := writePixel(w); err != nil {
 				logger.WithError(err).Error("Error writing transparent pixel response")
 				status = http.StatusInternalServerError
@@ -358,8 +367,8 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 	return status
 }
 
-func shouldWritePixel(r *http.Request) bool {
-	return r.URL.Query().Get("img") == "1"
+func shouldWritePixel(values url.Values) bool {
+	return values.Get("img") == "1"
 }
 
 func writePixel(w http.ResponseWriter) error {
