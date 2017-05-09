@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -305,6 +306,16 @@ func (kl *kinesisLogger) flush() {
 	logger.Go(func() { kl.putRecords(records) })
 }
 
+func advancePartitionKey(rec *kinesis.PutRecordsRequestEntry, attempt int) {
+	prevKey := *rec.PartitionKey
+	nonce := rand.Int31()
+	if attempt == 1 {
+		rec.PartitionKey = aws.String(fmt.Sprintf("%s_%010d", prevKey, nonce))
+	} else {
+		rec.PartitionKey = aws.String(fmt.Sprintf("%s%010d", prevKey[:len(prevKey)-10], nonce))
+	}
+}
+
 func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 	retryDelay, _ := time.ParseDuration(kl.config.RetryDelay)
 
@@ -354,6 +365,9 @@ func (kl *kinesisLogger) putRecords(records []*kinesis.PutRecordsRequestEntry) {
 					_ = kl.statter.Inc(kinesisStatsPrefix+"records_failed.unknown_reason", 1, 1)
 					_ = kl.statter.Inc(kinesisStatsPrefix+fmt.Sprintf("byshard.%s.records_failed.unknown_reason", shard), 1, 1)
 				}
+				// generate a new uuid for the retry
+				advancePartitionKey(args.Records[j], attempt)
+
 				args.Records[i] = args.Records[j]
 				i++
 			} else {
