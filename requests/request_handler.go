@@ -22,7 +22,8 @@ import (
 )
 
 var (
-	xDomainContents = func() (b []byte) {
+	hostSamplingRate = float32(0.01)
+	xDomainContents  = func() (b []byte) {
 		filename := os.Getenv("CROSS_DOMAIN_LOCATION")
 		if filename == "" {
 			filename = "../build/config/crossdomain.xml"
@@ -190,6 +191,13 @@ func truncate(s string, max int) string {
 	return s
 }
 
+func sanitizeHostValue(host string) string {
+	if host == "" {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(host))
+}
+
 func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, context *requestContext) int {
 	statTimer := newTimerInstance()
 
@@ -213,6 +221,10 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 
 	if len(r.RequestURI) > 8192 {
 		_ = s.StatLogger.Inc("large_URI", 1, 1)
+	}
+
+	if host := sanitizeHostValue(r.Header.Get("Host")); len(host) > 0 {
+		_ = s.StatLogger.Inc(fmt.Sprintf("requests.hosts.%s", host), 1, hostSamplingRate)
 	}
 
 	data := r.Form.Get("data")

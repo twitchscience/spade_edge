@@ -18,6 +18,7 @@ import (
 const (
 	instanceID     = "i-test"
 	eventInURIStat = "event_in_URI"
+	hostStatPrefix = "requests.hosts."
 )
 
 type testEdgeLogger struct {
@@ -76,6 +77,7 @@ func TestTooBigRequest(t *testing.T) {
 		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
 	}
 	req.Header.Add("X-Forwarded-For", "222.222.222.222")
+	req.Header.Add("Host", "spade.twitch.tv:80")
 	spadeHandler.ServeHTTP(testrecorder, req)
 
 	if testrecorder.Code != http.StatusRequestEntityTooLarge {
@@ -132,6 +134,7 @@ func TestEndPoints(t *testing.T) {
 			t.Fatalf("Failed to build request: %s error: %s\n", tt.Request.Endpoint, err)
 		}
 		req.Header.Add("X-Forwarded-For", "222.222.222.222")
+		req.Header.Add("Host", "spade.twitch.tv:80")
 		if tt.Request.ContentType != "" {
 			req.Header.Add("Content-Type", tt.Request.ContentType)
 		}
@@ -225,6 +228,15 @@ func hasURICountStat(rs *statsdtest.RecordingSender) bool {
 	return false
 }
 
+func hasHostCountStat(rs *statsdtest.RecordingSender) bool {
+	for _, stat := range rs.GetSent() {
+		if strings.HasPrefix(stat.Stat, hostStatPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestURICounting(t *testing.T) {
 	rs := statsdtest.NewRecordingSender()
 	statter, _ := statsd.NewClientWithSender(rs, "") // error is only for nil sender
@@ -255,6 +267,35 @@ func TestURICounting(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestHostCounting(t *testing.T) {
+	rs := statsdtest.NewRecordingSender()
+	statter, _ := statsd.NewClientWithSender(rs, "") // error is only for nil sender
+	spadeHandler := makeSpadeHandler(statter)
+
+	hostSamplingRate = float32(1.0)
+	testRecorder := httptest.NewRecorder()
+	req, err := http.NewRequest(
+		"POST",
+		"http://spade.example.com/",
+		strings.NewReader("blag"))
+	if err != nil {
+		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
+	}
+
+	req.Header.Add("X-Forwarded-For", "222.222.222.222")
+	spadeHandler.ServeHTTP(testRecorder, req)
+	if hasHostCountStat(rs) {
+		t.Errorf("Expected no statsd metrics sent for an empty host")
+	}
+
+	req.Header.Add("Host", "spade.twitch.tv:80")
+	spadeHandler.ServeHTTP(testRecorder, req)
+	if !hasHostCountStat(rs) {
+		t.Errorf("Expected statsd metrics sent when a host is provided")
+	}
+
 }
 
 func BenchmarkRequests(b *testing.B) {
