@@ -338,7 +338,11 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *requestContext) int {
 	var status int
-	switch r.URL.Path {
+	path := r.URL.Path
+	if strings.HasPrefix(path, "/v1/") {
+		path = "/track"
+	}
+	switch path {
 	case "/crossdomain.xml":
 		w.Header().Add("Content-Type", xmlApplicationType)
 		_, err := w.Write(xDomainContents)

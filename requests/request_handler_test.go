@@ -329,7 +329,7 @@ var (
 	longUserAgent = strings.Repeat("BigUserAgent", maxUserAgentBytes)
 
 	testRequests = []testTuple{
-		testTuple{
+		{
 			Request: testRequest{
 				Endpoint: "crossdomain.xml",
 				Verb:     "GET",
@@ -339,7 +339,7 @@ var (
 				Body: string(xDomainContents),
 			},
 		},
-		testTuple{
+		{
 			Request: testRequest{
 				Endpoint: "healthcheck",
 				Verb:     "GET",
@@ -348,7 +348,7 @@ var (
 				Code: http.StatusOK,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "blah",
 			Request: testRequest{
 				Endpoint: "track?data=blah",
@@ -358,7 +358,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "blah",
 			Request: testRequest{
 				Endpoint: "track/?data=blah",
@@ -368,7 +368,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "eyJldmVudCI6ImhlbGxvIn0",
 			Request: testRequest{
 				Endpoint: "track/?data=eyJldmVudCI6ImhlbGxvIn0&ip=1",
@@ -378,7 +378,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			Request: testRequest{
 				Endpoint: "track",
 				Verb:     "GET",
@@ -387,7 +387,7 @@ var (
 				Code: http.StatusBadRequest,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "blat",
 			Request: testRequest{
 				Endpoint: "?data=blat",
@@ -397,7 +397,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "blag",
 			Request: testRequest{
 				Verb:        "POST",
@@ -408,10 +408,31 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
+		{
+			DataExpectation: "blag",
+			Request: testRequest{
+				Endpoint: "v1/blag",
+				Verb:     "POST",
+				Body:     "blag",
+			},
+			Response: testResponse{
+				Code: http.StatusNoContent,
+			},
+		},
+		{
+			Request: testRequest{
+				Endpoint: "v0/blag",
+				Verb:     "POST",
+				Body:     "blag",
+			},
+			Response: testResponse{
+				Code: http.StatusNotFound,
+			},
+		},
 		// The next request is a bad client that passes our tests,
 		// hopefully these should be incredibly rare. They do not parse at
 		// our processor level
-		testTuple{
+		{
 			DataExpectation: "ip=&data=blagi",
 			Request: testRequest{
 				Verb:        "POST",
@@ -422,7 +443,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "bleck",
 			Request: testRequest{
 				Verb:        "POST",
@@ -433,7 +454,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "blog",
 			Request: testRequest{
 				Verb:        "POST",
@@ -444,7 +465,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "blem",
 			Request: testRequest{
 				Verb:     "POST",
@@ -454,7 +475,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "blamo",
 			Request: testRequest{
 				Verb:     "GET",
@@ -464,7 +485,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			Request: testRequest{
 				Endpoint: "/spam/spam",
 				Verb:     "POST",
@@ -474,7 +495,7 @@ var (
 				Code: http.StatusNotFound,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation: "eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19",
 			Request: testRequest{
 				Endpoint: "track/?data=eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19&img=1",
@@ -495,7 +516,7 @@ var (
 				},
 			},
 		},
-		testTuple{
+		{
 			DataExpectation:      "eyJldmVudCI6ImhlbGxvIn0",
 			UserAgentExpectation: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
 			Request: testRequest{
@@ -507,7 +528,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation:      "eyJldmVudCI6ImhlbGxvIn0",
 			UserAgentExpectation: "",
 			Request: testRequest{
@@ -519,7 +540,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation:      "eyJldmVudCI6ImhlbGxvIn0",
 			UserAgentExpectation: "",
 			Request: testRequest{
@@ -531,7 +552,7 @@ var (
 				Code: http.StatusNoContent,
 			},
 		},
-		testTuple{
+		{
 			DataExpectation:      "eyJldmVudCI6ImVtYWlsX29wZW4iLCJwcm9wZXJ0aWVzIjp7Im5vdGlmaWNhdGlvbl9pZCI6ImFiY2RlZmdoaWprbG1ub3BxcnVzdHZ3eXh6In19",
 			UserAgentExpectation: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36",
 			Request: testRequest{
