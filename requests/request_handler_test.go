@@ -76,8 +76,8 @@ func TestTooBigRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
 	}
+	req.Host = "spade.twitch.tv:80"
 	req.Header.Add("X-Forwarded-For", "222.222.222.222")
-	req.Header.Add("Host", "spade.twitch.tv:80")
 	spadeHandler.ServeHTTP(testrecorder, req)
 
 	if testrecorder.Code != http.StatusRequestEntityTooLarge {
@@ -133,8 +133,8 @@ func TestEndPoints(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to build request: %s error: %s\n", tt.Request.Endpoint, err)
 		}
+		req.Host = "spade.twitch.tv:80"
 		req.Header.Add("X-Forwarded-For", "222.222.222.222")
-		req.Header.Add("Host", "spade.twitch.tv:80")
 		if tt.Request.ContentType != "" {
 			req.Header.Add("Content-Type", tt.Request.ContentType)
 		}
@@ -284,13 +284,14 @@ func TestHostCounting(t *testing.T) {
 		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
 	}
 
+	req.Host = ""
 	req.Header.Add("X-Forwarded-For", "222.222.222.222")
 	spadeHandler.ServeHTTP(testRecorder, req)
 	if hasHostCountStat(rs) {
 		t.Errorf("Expected no statsd metrics sent for an empty host")
 	}
 
-	req.Header.Add("Host", "spade.twitch.tv:80")
+	req.Host = "spade.twitch.tv:80"
 	spadeHandler.ServeHTTP(testRecorder, req)
 	if !hasHostCountStat(rs) {
 		t.Errorf("Expected statsd metrics sent when a host is provided")

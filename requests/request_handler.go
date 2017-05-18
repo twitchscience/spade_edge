@@ -195,7 +195,8 @@ func sanitizeHostValue(host string) string {
 	if host == "" {
 		return ""
 	}
-	return strings.ToLower(strings.TrimSpace(host))
+	hostWithoutPort := strings.Split(strings.ToLower(strings.TrimSpace(host)), ":")[0]
+	return strings.Replace(hostWithoutPort, ".", "_", -1)
 }
 
 func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, context *requestContext) int {
@@ -223,7 +224,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 		_ = s.StatLogger.Inc("large_URI", 1, 1)
 	}
 
-	if host := sanitizeHostValue(r.Header.Get("Host")); len(host) > 0 {
+	if host := sanitizeHostValue(r.Host); len(host) > 0 {
 		_ = s.StatLogger.Inc(fmt.Sprintf("requests.hosts.%s", host), 1, hostSamplingRate)
 	}
 
