@@ -331,7 +331,9 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		BadClient: false,
 	}
 	timer := newTimerInstance()
-	context.setStatus(s.serve(w, r, context))
+	status := s.serve(w, r, context)
+	_ = s.StatLogger.Inc(fmt.Sprintf("status_code.%d", status), 1, 0.001)
+	context.setStatus(status)
 	context.Timers["http"] = timer.stopTiming()
 
 	context.recordStats(s.StatLogger)
