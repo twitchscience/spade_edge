@@ -18,4 +18,5 @@ aws s3 cp "$CONFIG_PREFIX/conf.json" ../config/runtime/conf.json
 source ../config/runtime/conf.sh
 
 exec ./spade_edge -config ../config/runtime/conf.json \
-                  -stat_prefix "${OWNER}.${CLOUD_APP}.${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT}}.${EC2_REGION}.${CLOUD_AUTO_SCALE_GROUP##*-}"
+  -stat_prefix "${OWNER}.${CLOUD_APP}.${CLOUD_DEV_PHASE:-${CLOUD_ENVIRONMENT}}.${EC2_REGION}.${CLOUD_AUTO_SCALE_GROUP##*-}" \
+  -edge_type "${EDGE_TYPE}"

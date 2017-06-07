@@ -105,23 +105,24 @@ type SpadeHandler struct {
 	StatLogger  statsd.Statter
 	EdgeLoggers *EdgeLoggers
 	Time        func() time.Time // Defaults to time.Now
-	instanceID  string
+	EdgeType    string
 	corsOrigins map[string]bool
+	instanceID  string
 
 	// eventCount counts the number of event requests handled. It is used in
 	// uuid generation. eventCount is read and written from multiple go routines
 	// so any access to it should go through sync/atomic
-	eventCount uint64
-
+	eventCount             uint64
 	eventInURISamplingRate float32
 }
 
 // NewSpadeHandler returns a new instance of SpadeHandler
-func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, instanceID string, CORSOrigins []string, eventInURISamplingRate float32) *SpadeHandler {
+func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, instanceID string, CORSOrigins []string, eventInURISamplingRate float32, edgeType string) *SpadeHandler {
 	h := &SpadeHandler{
 		StatLogger:             stats,
 		EdgeLoggers:            loggers,
 		Time:                   time.Now,
+		EdgeType:               edgeType,
 		instanceID:             instanceID,
 		corsOrigins:            make(map[string]bool),
 		eventInURISamplingRate: eventInURISamplingRate,
@@ -284,6 +285,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 		uuid,
 		data,
 		userAgent,
+		s.EdgeType,
 	)
 
 	defer func() {

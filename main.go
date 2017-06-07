@@ -40,6 +40,7 @@ import (
 var (
 	configFilename = flag.String("config", "conf.json", "name of config file")
 	statsdPrefix   = flag.String("stat_prefix", "", "statsd prefix")
+	edgeType       = flag.String("edge_type", "", "edge type (internal/external)")
 )
 
 const maxConnections = 8000
@@ -125,6 +126,10 @@ func main() {
 		}
 	}
 
+	if *edgeType != spade.INTERNAL_EDGE && *edgeType != spade.EXTERNAL_EDGE {
+		logger.WithField("edgeType", *edgeType).Fatal("Invalid edge type")
+	}
+
 	// Trigger close on receipt of SIGINT
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, syscall.SIGINT)
@@ -170,7 +175,8 @@ func main() {
 			edgeLoggers,
 			instanceID,
 			config.CorsOrigins,
-			config.EventInURISamplingRate),
+			config.EventInURISamplingRate,
+			*edgeType),
 		ReadTimeout:    5 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1MB
