@@ -214,6 +214,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 			s.logLargeRequestError(r, "")
 			return http.StatusRequestEntityTooLarge
 		}
+		_ = s.StatLogger.Inc("bad_request.parse_form", 1, 0.01)
 		return http.StatusBadRequest
 	}
 
@@ -243,6 +244,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 				s.logLargeRequestError(r, string(b))
 				return http.StatusRequestEntityTooLarge
 			}
+			_ = s.StatLogger.Inc("bad_request.read_data", 1, 0.01)
 			return http.StatusBadRequest
 		}
 		if bytes.Equal(b[:5], dataFlag) {
@@ -253,6 +255,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 
 	}
 	if data == "" {
+		_ = s.StatLogger.Inc("bad_request.empty", 1, 0.01)
 		return http.StatusBadRequest
 	}
 
@@ -295,6 +298,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 	err = s.EdgeLoggers.log(event, context)
 
 	if err != nil {
+		_ = s.StatLogger.Inc("bad_request.write_failure", 1, 0.01)
 		return http.StatusBadRequest
 	}
 
