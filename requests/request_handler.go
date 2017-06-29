@@ -219,6 +219,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 		// BEGIN DEBUG SECTION
 		if dump, err2 := httputil.DumpRequest(r, true); err2 != nil {
 			logger.WithError(err2).Warn("Failed to dump request when ParseForm returned an error")
+			logger.WithError(err).Warn("Original ParseForm error")
 		} else {
 			logger.WithField("request", dump).WithError(err).Warn("ParseForm returned an error")
 		}
