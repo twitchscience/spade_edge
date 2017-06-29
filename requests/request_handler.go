@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"strings"
@@ -215,6 +216,13 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 			return http.StatusRequestEntityTooLarge
 		}
 		_ = s.StatLogger.Inc("bad_request.parse_form", 1, 0.01)
+		// BEGIN DEBUG SECTION
+		if dump, err2 := httputil.DumpRequest(r, true); err2 != nil {
+			logger.WithError(err2).Warn("Failed to dump request when ParseForm returned an error")
+		} else {
+			logger.WithField("request", dump).WithError(err).Warn("ParseForm returned an error")
+		}
+		// END DEBUG SECTION
 		return http.StatusBadRequest
 	}
 
