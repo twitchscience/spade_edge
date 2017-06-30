@@ -2,6 +2,8 @@ package requests
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -83,8 +85,7 @@ func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
 	context.recordLoggerAttempt(eventErr, "event")
 	context.recordLoggerAttempt(kinesisErr, "kinesis")
 
-	if eventErr != nil &&
-		kinesisErr != nil {
+	if eventErr != nil && kinesisErr != nil {
 		return errors.New("Failed to store the event in any of the loggers")
 	}
 
@@ -259,18 +260,6 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 		return http.StatusBadRequest
 	}
 
-	bData := []byte(data)
-	if len(bData) > maxBytesPerRequest {
-		s.logLargeRequestError(r, data)
-		return http.StatusRequestEntityTooLarge
-	}
-
-	context.Timers["data"] = statTimer.stopTiming()
-
-	count := atomic.AddUint64(&s.eventCount, 1)
-	uuid := fmt.Sprintf("%s-%08x-%08x", s.instanceID, context.Now.Unix(), count)
-	context.Timers["uuid"] = statTimer.stopTiming()
-
 	var userAgent string
 	if values.Get("ua") == "1" {
 		userAgent = r.Header.Get("User-Agent")
@@ -280,6 +269,97 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 			userAgent = ""
 		}
 	}
+
+	context.Timers["data"] = statTimer.stopTiming()
+
+	bData := []byte(data)
+	if len(bData) > maxBytesPerRequest {
+		_ = s.StatLogger.Inc("split_large_request.request.total", 1, 0.1)
+		var n int
+		// We dont have to allocate a new byte array here because the len(dst) < len(src)
+		if !bytes.ContainsAny(bData, "-_") {
+			n, err = base64.StdEncoding.Decode(bData, bData)
+		} else {
+			n, err = base64.URLEncoding.Decode(bData, bData)
+		}
+		if err != nil {
+			logger.WithError(err).Warn("Error base64-decoding large request")
+			s.logLargeRequestError(r, data)
+			_ = s.StatLogger.Inc("split_large_request.request.fail.base64", 1, 0.1)
+			return http.StatusRequestEntityTooLarge
+		}
+
+		if n < 1 || !bytes.Equal(bData[:2], []byte("[{")) {
+			logger.Warn("Unexpectd bytes in large event")
+			s.logLargeRequestError(r, data)
+			_ = s.StatLogger.Inc("split_large_request.request.fail.json", 1, 0.1)
+			return http.StatusRequestEntityTooLarge
+		}
+		var events []json.RawMessage
+		err = json.Unmarshal(bData[:n], &events)
+		if err != nil {
+			logger.WithError(err).Warn("Error unmarshaling large request into JSON")
+			_ = s.StatLogger.Inc("split_large_request.request.fail.json", 1, 0.1)
+			s.logLargeRequestError(r, data)
+			return http.StatusRequestEntityTooLarge
+		}
+		defer func() {
+			context.Timers["write"] = statTimer.stopTiming()
+		}()
+		statusCode := http.StatusNoContent
+		var successCount, failCount int64
+		for _, event := range events {
+			encEvent := base64.StdEncoding.EncodeToString(event)
+			bEvent := []byte(encEvent)
+			if len(bEvent) > maxBytesPerRequest {
+				s.logLargeRequestError(r, encEvent)
+				statusCode = http.StatusRequestEntityTooLarge
+			}
+			err = s.writeEvent(encEvent, context, clientIP, xForwardedFor, userAgent)
+			if err != nil {
+				logger.WithError(err).Warn("Error writing to logger")
+				failCount++
+			} else {
+				successCount++
+			}
+		}
+		if failCount != 0 {
+			_ = s.StatLogger.Inc("split_large_request.event.fail", failCount, 0.1)
+			_ = s.StatLogger.Inc("split_large_request.request.fail.partial", 1, 0.1)
+		} else if failCount == 0 {
+			_ = s.StatLogger.Inc("split_large_request.request.success", 1, 0.1)
+		}
+		_ = s.StatLogger.Inc("split_large_request.request.success", 1, 0.1)
+		_ = s.StatLogger.Inc("split_large_request.event.total", int64(len(events)), 0.1)
+		_ = s.StatLogger.Inc("split_large_request.event.success", successCount, 0.1)
+
+		// If we only failed to write some, indicate success so we don't duplicate.
+		if successCount == 0 {
+			_ = s.StatLogger.Inc("split_large_request.request.fail.write", 1, 0.1)
+			return http.StatusInternalServerError
+		}
+		return statusCode
+	}
+	defer func() {
+		context.Timers["write"] = statTimer.stopTiming()
+	}()
+	err = s.writeEvent(data, context, clientIP, xForwardedFor, userAgent)
+	if err != nil {
+		logger.WithError(err).Warn("Error writing to logger")
+		return http.StatusInternalServerError
+	}
+
+	if shouldWritePixel(values) {
+		return http.StatusOK
+	}
+
+	return http.StatusNoContent
+}
+
+func (s *SpadeHandler) writeEvent(data string, context *requestContext, clientIP net.IP,
+	xForwardedFor string, userAgent string) error {
+	count := atomic.AddUint64(&s.eventCount, 1)
+	uuid := fmt.Sprintf("%s-%08x-%08x", s.instanceID, context.Now.Unix(), count)
 
 	event := spade.NewEvent(
 		context.Now,
@@ -291,22 +371,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 		s.EdgeType,
 	)
 
-	defer func() {
-		context.Timers["write"] = statTimer.stopTiming()
-	}()
-
-	err = s.EdgeLoggers.log(event, context)
-
-	if err != nil {
-		_ = s.StatLogger.Inc("bad_request.write_failure", 1, 0.01)
-		return http.StatusBadRequest
-	}
-
-	if shouldWritePixel(values) {
-		return http.StatusOK
-	}
-
-	return http.StatusNoContent
+	return s.EdgeLoggers.log(event, context)
 }
 
 func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

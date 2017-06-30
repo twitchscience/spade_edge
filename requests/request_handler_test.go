@@ -1,6 +1,7 @@
 package requests
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
@@ -64,14 +65,14 @@ func (t *testEdgeLogger) Log(e *spade.Event) error {
 
 func (t *testEdgeLogger) Close() {}
 
-func TestTooBigRequest(t *testing.T) {
+func TestTooBigRequestUnsplittable(t *testing.T) {
 	s, _ := statsd.NewNoop()
 	spadeHandler := makeSpadeHandler(s, spade.INTERNAL_EDGE)
 	testrecorder := httptest.NewRecorder()
 	req, err := http.NewRequest(
 		"POST",
 		"http://spade.example.com/",
-		strings.NewReader(fmt.Sprintf("data=%s", longJSON)),
+		strings.NewReader(fmt.Sprintf("data=%s", longJSONUnsplittable)),
 	)
 	if err != nil {
 		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
@@ -82,6 +83,48 @@ func TestTooBigRequest(t *testing.T) {
 
 	if testrecorder.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("%s expected code %d not %d\n", "/", http.StatusRequestEntityTooLarge, testrecorder.Code)
+	}
+}
+
+func TestTooBigRequestElement(t *testing.T) {
+	s, _ := statsd.NewNoop()
+	spadeHandler := makeSpadeHandler(s, spade.INTERNAL_EDGE)
+	testrecorder := httptest.NewRecorder()
+	req, err := http.NewRequest(
+		"POST",
+		"http://spade.example.com/",
+		strings.NewReader(fmt.Sprintf("data=%s", longJSONElement)),
+	)
+	if err != nil {
+		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
+	}
+	req.Host = "spade.twitch.tv:80"
+	req.Header.Add("X-Forwarded-For", "222.222.222.222")
+	spadeHandler.ServeHTTP(testrecorder, req)
+
+	if testrecorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("%s expected code %d not %d\n", "/", http.StatusRequestEntityTooLarge, testrecorder.Code)
+	}
+}
+
+func TestTooBigRequestSplittable(t *testing.T) {
+	s, _ := statsd.NewNoop()
+	spadeHandler := makeSpadeHandler(s, spade.INTERNAL_EDGE)
+	testrecorder := httptest.NewRecorder()
+	req, err := http.NewRequest(
+		"POST",
+		"http://spade.example.com/",
+		strings.NewReader(fmt.Sprintf("data=%s", longJSONSplittable)),
+	)
+	if err != nil {
+		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
+	}
+	req.Host = "spade.twitch.tv:80"
+	req.Header.Add("X-Forwarded-For", "222.222.222.222")
+	spadeHandler.ServeHTTP(testrecorder, req)
+
+	if testrecorder.Code != http.StatusNoContent {
+		t.Fatalf("%s expected code %d not %d\n", "/", http.StatusNoContent, testrecorder.Code)
 	}
 }
 
@@ -396,7 +439,12 @@ func BenchmarkRequests(b *testing.B) {
 }
 
 var (
-	longJSON      = `{"event":"` + strings.Repeat("BigData", 700000) + `"}`
+	longJSONUnsplittable = base64.StdEncoding.EncodeToString(
+		[]byte(`{"event":"` + strings.Repeat("BigData", 70000) + `"}`))
+	longJSONElement = base64.StdEncoding.EncodeToString(
+		[]byte(`[{"event":"` + strings.Repeat("BigData", 70000) + `"}]`))
+	longJSONSplittable = base64.StdEncoding.EncodeToString(
+		[]byte(`[` + strings.Repeat(`{"event": "BigData"},`, 70000) + `{"event": "X"}]`))
 	longUserAgent = strings.Repeat("BigUserAgent", maxUserAgentBytes)
 
 	testRequests = []testTuple{
