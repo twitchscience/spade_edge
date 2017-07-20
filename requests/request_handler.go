@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/gobwas/glob"
 	"github.com/twitchscience/aws_utils/logger"
 	"github.com/twitchscience/scoop_protocol/spade"
 	"github.com/twitchscience/spade_edge/loggers"
@@ -103,12 +104,12 @@ func (e *EdgeLoggers) Close() {
 
 // SpadeHandler handles http requests and forwards them to the EdgeLoggers
 type SpadeHandler struct {
-	StatLogger  statsd.Statter
-	EdgeLoggers *EdgeLoggers
-	Time        func() time.Time // Defaults to time.Now
-	EdgeType    string
-	corsOrigins map[string]bool
-	instanceID  string
+	StatLogger         statsd.Statter
+	EdgeLoggers        *EdgeLoggers
+	Time               func() time.Time // Defaults to time.Now
+	EdgeType           string
+	corsOriginMatchers []glob.Glob
+	instanceID         string
 
 	// eventCount counts the number of event requests handled. It is used in
 	// uuid generation. eventCount is read and written from multiple go routines
@@ -125,14 +126,14 @@ func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, instanceID stri
 		Time:                   time.Now,
 		EdgeType:               edgeType,
 		instanceID:             instanceID,
-		corsOrigins:            make(map[string]bool),
+		corsOriginMatchers:     []glob.Glob{},
 		eventInURISamplingRate: eventInURISamplingRate,
 	}
 
 	for _, origin := range CORSOrigins {
 		trimmedOrigin := strings.TrimSpace(origin)
 		if trimmedOrigin != "" {
-			h.corsOrigins[trimmedOrigin] = true
+			h.corsOriginMatchers = append(h.corsOriginMatchers, glob.MustCompile(trimmedOrigin))
 		}
 	}
 	return h
@@ -374,6 +375,15 @@ func (s *SpadeHandler) writeEvent(data string, context *requestContext, clientIP
 	return s.EdgeLoggers.log(event, context)
 }
 
+func (s *SpadeHandler) isAcceptableOrigin(origin string) bool {
+	for _, matcher := range s.corsOriginMatchers {
+		if matcher.Match(origin) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !allowedMethods[r.Method] {
 		w.WriteHeader(http.StatusBadRequest)
@@ -382,7 +392,7 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Vary", "Origin")
 
 	origin := r.Header.Get("Origin")
-	if s.corsOrigins[origin] {
+	if s.isAcceptableOrigin(origin) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", allowedMethodsHeader)
 	}
