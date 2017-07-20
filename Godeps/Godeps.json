@@ -193,6 +193,46 @@
 			"Rev": "776aa739ce9373377cd16f526cdf06cb4c89b40f"
 		},
 		{
+			"ImportPath": "github.com/gobwas/glob",
+			"Comment": "v0.2.2-2-g51eb1ee",
+			"Rev": "51eb1ee00b6d931c66d229ceeb7c31b985563420"
+		},
+		{
+			"ImportPath": "github.com/gobwas/glob/compiler",
+			"Comment": "v0.2.2-2-g51eb1ee",
+			"Rev": "51eb1ee00b6d931c66d229ceeb7c31b985563420"
+		},
+		{
+			"ImportPath": "github.com/gobwas/glob/match",
+			"Comment": "v0.2.2-2-g51eb1ee",
+			"Rev": "51eb1ee00b6d931c66d229ceeb7c31b985563420"
+		},
+		{
+			"ImportPath": "github.com/gobwas/glob/syntax",
+			"Comment": "v0.2.2-2-g51eb1ee",
+			"Rev": "51eb1ee00b6d931c66d229ceeb7c31b985563420"
+		},
+		{
+			"ImportPath": "github.com/gobwas/glob/syntax/ast",
+			"Comment": "v0.2.2-2-g51eb1ee",
+			"Rev": "51eb1ee00b6d931c66d229ceeb7c31b985563420"
+		},
+		{
+			"ImportPath": "github.com/gobwas/glob/syntax/lexer",
+			"Comment": "v0.2.2-2-g51eb1ee",
+			"Rev": "51eb1ee00b6d931c66d229ceeb7c31b985563420"
+		},
+		{
+			"ImportPath": "github.com/gobwas/glob/util/runes",
+			"Comment": "v0.2.2-2-g51eb1ee",
+			"Rev": "51eb1ee00b6d931c66d229ceeb7c31b985563420"
+		},
+		{
+			"ImportPath": "github.com/gobwas/glob/util/strings",
+			"Comment": "v0.2.2-2-g51eb1ee",
+			"Rev": "51eb1ee00b6d931c66d229ceeb7c31b985563420"
+		},
+		{
 			"ImportPath": "github.com/jmespath/go-jmespath",
 			"Comment": "0.2.2-12-g0b12d6b",
 			"Rev": "0b12d6b521d83fc7f755e7cfc1b1fbdd35a01a74"
