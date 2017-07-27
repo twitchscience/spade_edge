@@ -1,5 +1,5 @@
 /*
-Package spade_edge provides a write-only API server for data ingest into
+blahPackage spade_edge provides a write-only API server for data ingest into
 the Spade pipeline. It performs light validation, annotation, and manages
 writes to Kinesis and S3. The service is typically behind an Elastic Load
 Balancer, which handles concerns such as HTTPS. Standard requests result in a
