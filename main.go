@@ -15,6 +15,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -43,7 +44,7 @@ var (
 	edgeType       = flag.String("edge_type", "", "edge type (internal/external)")
 )
 
-const maxConnections = 8000
+const maxConnections = 16000
 
 func initStatsd(statsdHostport, prefix string) (statsd.Statter, error) {
 	switch {
@@ -94,6 +95,11 @@ func main() {
 	logger.Info("Starting edge")
 	logger.CaptureDefault()
 	defer logger.LogPanic()
+
+	numCPU := runtime.NumCPU()
+	logger.Info("NUMCPU: %v", numCPU)
+
+	runtime.GOMAXPROCS(numCPU * 2)
 
 	stats, err := initStatsd(os.Getenv("STATSD_HOSTPORT"), *statsdPrefix)
 	if err != nil {

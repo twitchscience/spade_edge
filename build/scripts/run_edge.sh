@@ -9,7 +9,7 @@ for line in $( cat /etc/environment ) ; do export $(echo $line | tr -d '"') ; do
 export HOST="$(curl 169.254.169.254/latest/meta-data/hostname)"
 export EDGE_VERSION="2"
 export CROSS_DOMAIN_LOCATION="/opt/science/spade_edge/config/crossdomain.xml"
-export GOMAXPROCS="16"
+export GOMAXPROCS="128"
 export CONFIG_PREFIX="s3://$S3_CONFIG_BUCKET/$VPC_SUBNET_TAG/$CLOUD_APP/${CLOUD_ENVIRONMENT}"
 export AWS_REGION=us-west-2
 export AWS_DEFAULT_REGION=$AWS_REGION # aws-cli uses AWS_DEFAULT_REGION, aws-sdk-go uses AWS_REGION
