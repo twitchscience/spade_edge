@@ -411,50 +411,9 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *requestContext) int {
-	var status int
-	path := r.URL.Path
-	if strings.HasPrefix(path, "/v1/") {
-		path = "/track"
-	}
-	switch path {
-	case "/crossdomain.xml":
-		w.Header().Add("Content-Type", xmlApplicationType)
-		_, err := w.Write(xDomainContents)
-		if err != nil {
-			logger.WithError(err).Error("Unable to write crossdomain.xml contents")
-			return http.StatusInternalServerError
-		}
-		return http.StatusOK
-	case "/healthcheck":
-		status = http.StatusOK
-	case "/xarth":
-		_, err := w.Write(xarth)
-		if err != nil {
-			logger.WithError(err).Error("Error writing XARTH response")
-			return http.StatusInternalServerError
-		}
-		return http.StatusOK
-	// Accepted tracking endpoints.
-	case "/", "/track", "/track/":
-		values := r.URL.Query()
-		status = s.handleSpadeRequests(r, values, context)
+	for {
 
-		if shouldWritePixel(values) {
-			if err := writePixel(w); err != nil {
-				logger.WithError(err).Error("Error writing transparent pixel response")
-				status = http.StatusInternalServerError
-			} else {
-				// header and body have already been written
-				return http.StatusOK
-			}
-		}
-	// dont track everything else
-	default:
-		context.Endpoint = badEndpoint
-		status = http.StatusNotFound
 	}
-	w.WriteHeader(status)
-	return status
 }
 
 func shouldWritePixel(values url.Values) bool {
