@@ -412,7 +412,7 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func busy() {
 	for {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 	}
 }
 
