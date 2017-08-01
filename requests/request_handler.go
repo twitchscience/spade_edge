@@ -410,14 +410,7 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	context.recordStats(s.StatLogger)
 }
 
-func busy() {
-	for {
-		time.Sleep(1 * time.Millisecond)
-	}
-}
-
 func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *requestContext) int {
-	busy()
 	var status int
 	path := r.URL.Path
 	if strings.HasPrefix(path, "/v1/") {
