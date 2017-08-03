@@ -153,7 +153,7 @@ func makeSpadeHandler(s statsd.Statter, edgeType string) *SpadeHandler {
 	c := s
 	loggers := NewEdgeLoggers()
 	loggers.S3EventLogger = &testEdgeLogger{}
-	spadeHandler := NewSpadeHandler(c, loggers, instanceID, []string{""}, 1, edgeType)
+	spadeHandler := NewSpadeHandler(c, loggers, instanceID, corsOrigins, 1, edgeType)
 	spadeHandler.Time = func() time.Time { return fixedTime }
 	return spadeHandler
 }
@@ -412,6 +412,47 @@ func TestHostCounting(t *testing.T) {
 
 }
 
+func TestCorsOriginAcceptance(t *testing.T) {
+	s, _ := statsd.NewNoop()
+	spadeHandler := makeSpadeHandler(s, spade.INTERNAL_EDGE)
+	goodOrigins := []string{
+		"http://www.twitch.tv",
+		"https://www.twitch.tv",
+		"http://unsecure-only.twitch.tv",
+		"http://test-m.twitch.tv",
+		"https://m.twitch.tv",
+		"https://server-1-test.twitch.tv",
+		"http://server-2-test.twitch.tv",
+		"http://server-3-test.twitch.tv",
+		"http://withspecificport.twitch.tv:100",
+		"http://withspecificport.twitch.tv:300",
+		"http://randomport.twitch.tv:343",
+		"https://randomport.twitch.tv:9847",
+		"http://1.2.3.4:80",
+	}
+	badOrigins := []string{
+		"httpX://www.twitch.tv",
+		"https://unsecure-only.twitch.tv",
+		"http://fail-m.twitch.tv",
+		"http://server-0-test.twitch.tv",
+		"https://server-4-test.twitch.tv",
+		"http://withspecificport.twitch.tv:200",
+		"https://randomport.twitch.tv",
+		"http://2.2.3.4:1234",
+	}
+
+	for _, origin := range goodOrigins {
+		if !spadeHandler.isAcceptableOrigin(origin) {
+			t.Errorf("Good origin %s wasn't accepted", origin)
+		}
+	}
+	for _, origin := range badOrigins {
+		if spadeHandler.isAcceptableOrigin(origin) {
+			t.Errorf("Bad origin %s was accepted", origin)
+		}
+	}
+}
+
 func BenchmarkRequests(b *testing.B) {
 	s, _ := statsd.NewNoop()
 	spadeHandler := makeSpadeHandler(s, spade.INTERNAL_EDGE)
@@ -446,6 +487,15 @@ var (
 	longJSONSplittable = base64.StdEncoding.EncodeToString(
 		[]byte(`[` + strings.Repeat(`{"event": "BigData"},`, 70000) + `{"event": "X"}]`))
 	longUserAgent = strings.Repeat("BigUserAgent", maxUserAgentBytes)
+	corsOrigins   = []string{
+		"http{,s}://www.twitch.tv",
+		"http://unsecure-only.twitch.tv",
+		"http{,s}://{,test-}m.twitch.tv",
+		"http{,s}://server-[1-3]-test.twitch.tv",
+		"http{,s}://withspecificport.twitch.tv:{1,3}00",
+		"http{,s}://randomport.twitch.tv:*",
+		"http{,s}://1.2.3.4:80",
+	}
 
 	testRequests = []testTuple{
 		{
