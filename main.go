@@ -154,7 +154,7 @@ func main() {
 		hystrixErr := http.ListenAndServe(":81", hystrixStreamHandler)
 		logger.WithError(hystrixErr).Error("Error listening to port 81 with hystrixStreamHandler")
 	})
-
+	runtime.SetBlockProfileRate(100000000)
 	logger.Go(func() {
 		logger.WithError(http.ListenAndServe(":7766", http.DefaultServeMux)).
 			Error("Serving pprof failed")
