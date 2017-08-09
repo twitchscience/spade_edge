@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/pprof"
 	"syscall"
 	"time"
 
@@ -154,11 +155,23 @@ func main() {
 		hystrixErr := http.ListenAndServe(":81", hystrixStreamHandler)
 		logger.WithError(hystrixErr).Error("Error listening to port 81 with hystrixStreamHandler")
 	})
-	runtime.SetBlockProfileRate(100000000)
+
 	logger.Go(func() {
 		logger.WithError(http.ListenAndServe(":7766", http.DefaultServeMux)).
 			Error("Serving pprof failed")
 	})
+
+	f, err := os.Create("/tmp/block")
+	if err != nil {
+		logger.WithError(err).Error("opening block file failed")
+	}
+	runtime.SetBlockProfileRate(100000)
+	tick := time.NewTicker(time.Second)
+	go func() {
+		for range tick.C {
+			pprof.Lookup("block").WriteTo(f, 1)
+		}
+	}()
 
 	l, err := net.Listen("tcp", config.Port)
 
