@@ -169,7 +169,7 @@ func main() {
 	tick := time.NewTicker(time.Second)
 	go func() {
 		for range tick.C {
-			pprof.Lookup("block").WriteTo(f, 1)
+			_ = pprof.Lookup("block").WriteTo(f, 1)
 		}
 	}()
 
