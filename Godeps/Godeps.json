@@ -277,7 +277,7 @@
 		},
 		{
 			"ImportPath": "github.com/twitchscience/scoop_protocol/spade",
-			"Rev": "343aa85785dbbd972746bbf755f4707c5e4267be"
+			"Rev": "f6544ef66fc637e6902af19c79e8394446e4c752"
 		},
 		{
 			"ImportPath": "golang.org/x/net/netutil",

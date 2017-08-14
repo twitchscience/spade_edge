@@ -128,6 +128,49 @@ func TestTooBigRequestSplittable(t *testing.T) {
 	}
 }
 
+func TestTooBigRequestSplittableHighChars(t *testing.T) {
+	s, _ := statsd.NewNoop()
+	spadeHandler := makeSpadeHandler(s, spade.INTERNAL_EDGE)
+	testrecorder := httptest.NewRecorder()
+	req, err := http.NewRequest(
+		"POST",
+		"http://spade.example.com/",
+		strings.NewReader(fmt.Sprintf("data=%s", longJSONSplittableHighChars)),
+	)
+	if err != nil {
+		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
+	}
+	req.Host = "spade.twitch.tv:80"
+	req.Header.Add("X-Forwarded-For", "222.222.222.222")
+	spadeHandler.ServeHTTP(testrecorder, req)
+
+	if testrecorder.Code != http.StatusNoContent {
+		t.Fatalf("%s expected code %d not %d\n", "/", http.StatusNoContent, testrecorder.Code)
+	}
+}
+
+func TestTooBigRequestSplittableHighCharsBadEncoding(t *testing.T) {
+	s, _ := statsd.NewNoop()
+	spadeHandler := makeSpadeHandler(s, spade.INTERNAL_EDGE)
+	testrecorder := httptest.NewRecorder()
+	req, err := http.NewRequest(
+		"POST",
+		"http://spade.example.com/",
+		strings.NewReader(fmt.Sprintf("data=%s", strings.Replace(
+			longJSONSplittableHighChars, "+", " ", -1))),
+	)
+	if err != nil {
+		t.Fatalf("Failed to build request: %s error: %s\n", "/", err)
+	}
+	req.Host = "spade.twitch.tv:80"
+	req.Header.Add("X-Forwarded-For", "222.222.222.222")
+	spadeHandler.ServeHTTP(testrecorder, req)
+
+	if testrecorder.Code != http.StatusNoContent {
+		t.Fatalf("%s expected code %d not %d\n", "/", http.StatusNoContent, testrecorder.Code)
+	}
+}
+
 func TestParseLastForwarder(t *testing.T) {
 	var testHeaders = []struct {
 		input    string
@@ -486,6 +529,8 @@ var (
 		[]byte(`[{"event":"` + strings.Repeat("BigData", 70000) + `"}]`))
 	longJSONSplittable = base64.StdEncoding.EncodeToString(
 		[]byte(`[` + strings.Repeat(`{"event": "BigData"},`, 70000) + `{"event": "X"}]`))
+	longJSONSplittableHighChars = base64.StdEncoding.EncodeToString(
+		[]byte(`[` + strings.Repeat(`{"event": "(✿☯‿☯✿)(✿☯‿☯✿)"},`, 40000) + `{"event": "X"}]`))
 	longUserAgent = strings.Repeat("BigUserAgent", maxUserAgentBytes)
 	corsOrigins   = []string{
 		"http{,s}://www.twitch.tv",

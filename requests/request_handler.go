@@ -277,13 +277,13 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 	if len(bData) > maxBytesPerRequest {
 		_ = s.StatLogger.Inc("split_large_request.request.total", 1, 0.1)
 		var n int
+		encoding := spade.DetermineBase64Encoding(bData)
 		// We dont have to allocate a new byte array here because the len(dst) < len(src)
-		if !bytes.ContainsAny(bData, "-_") {
-			n, err = base64.StdEncoding.Decode(bData, bData)
-		} else {
-			n, err = base64.URLEncoding.Decode(bData, bData)
-		}
+		n, err = encoding.Decode(bData, bData)
 		if err != nil {
+			if cie, ok := err.(base64.CorruptInputError); ok && int(cie) < len(bData) {
+				err = fmt.Errorf("%s: %d", err.Error(), bData[cie])
+			}
 			logger.WithError(err).Warn("Error base64-decoding large request")
 			s.logLargeRequestError(r, data)
 			_ = s.StatLogger.Inc("split_large_request.request.fail.base64", 1, 0.1)
