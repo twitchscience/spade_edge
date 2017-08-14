@@ -42,6 +42,8 @@ In both cases, the base64 should be posted as urlencoded form style:
 
     data=eyJldmVudCI6InNvbWUtZXZlbnQtdG8tdHJhY2siLCJwcm9wZXJ0aWVzIjp7Im90aGVycHJvcGVydHkiOiJzb21lb3RoZXJ2YWx1ZSIsInByb3BlcnR5MSI6InZhbHVlMSJ9fQ==
 
+Due to ambiguity in HTTP, the `+` in the base64 alphabet may be decoded to a space by the edge. Both the edge and spade itself will interpret spaces as `+` when base64 decoding to handle this.
+
 Spade Edge will respond with a 204 No Content unless a `img=1` is supplied as a request query parameter, in which
 case it will respond with a 200 and a 1x1 transparent pixel.  It will also return a `413` if you send a payload larger than 500 kB.
 
