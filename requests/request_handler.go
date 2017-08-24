@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,18 +24,7 @@ import (
 )
 
 var (
-	hostSamplingRate = float32(0.01)
-	xDomainContents  = func() (b []byte) {
-		filename := os.Getenv("CROSS_DOMAIN_LOCATION")
-		if filename == "" {
-			filename = "../build/config/crossdomain.xml"
-		}
-		b, err := ioutil.ReadFile(filename)
-		if err != nil {
-			logger.WithError(err).Fatal("Cross domain file not found")
-		}
-		return
-	}()
+	hostSamplingRate   = float32(0.01)
 	xmlApplicationType = mime.TypeByExtension(".xml")
 	xarth              = []byte("XARTH")
 	dataFlag           = []byte("data=")
@@ -69,7 +57,7 @@ func NewEdgeLoggers() *EdgeLoggers {
 	}
 }
 
-func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
+func (e *EdgeLoggers) log(event *spade.Event, context *RequestContext) error {
 	e.Add(1)
 	defer e.Done()
 
@@ -83,8 +71,8 @@ func (e *EdgeLoggers) log(event *spade.Event, context *requestContext) error {
 	eventErr := e.S3EventLogger.Log(event)
 	kinesisErr := e.KinesisEventLogger.Log(event)
 
-	context.recordLoggerAttempt(eventErr, "event")
-	context.recordLoggerAttempt(kinesisErr, "kinesis")
+	context.RecordLoggerAttempt(eventErr, "event")
+	context.RecordLoggerAttempt(kinesisErr, "kinesis")
 
 	if eventErr != nil && kinesisErr != nil {
 		return errors.New("Failed to store the event in any of the loggers")
@@ -104,11 +92,12 @@ func (e *EdgeLoggers) Close() {
 
 // SpadeHandler handles http requests and forwards them to the EdgeLoggers
 type SpadeHandler struct {
-	StatLogger         statsd.Statter
+	StatLogger         statsd.StatSender
 	EdgeLoggers        *EdgeLoggers
 	Time               func() time.Time // Defaults to time.Now
 	EdgeType           string
 	corsOriginMatchers []glob.Glob
+	crossDomainPolicy  []byte
 	instanceID         string
 
 	// eventCount counts the number of event requests handled. It is used in
@@ -116,10 +105,15 @@ type SpadeHandler struct {
 	// so any access to it should go through sync/atomic
 	eventCount             uint64
 	eventInURISamplingRate float32
+
+	// Whether to split and process large events or throw them away.
+	handleLargeEvents bool
 }
 
 // NewSpadeHandler returns a new instance of SpadeHandler
-func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, instanceID string, CORSOrigins []string, eventInURISamplingRate float32, edgeType string) *SpadeHandler {
+func NewSpadeHandler(stats statsd.StatSender, loggers *EdgeLoggers, instanceID string,
+	CORSOrigins []string, eventInURISamplingRate float32, crossDomainPolicy string,
+	edgeType string, handleLargeEvents bool) *SpadeHandler {
 	h := &SpadeHandler{
 		StatLogger:             stats,
 		EdgeLoggers:            loggers,
@@ -127,7 +121,9 @@ func NewSpadeHandler(stats statsd.Statter, loggers *EdgeLoggers, instanceID stri
 		EdgeType:               edgeType,
 		instanceID:             instanceID,
 		corsOriginMatchers:     []glob.Glob{},
+		crossDomainPolicy:      []byte(crossDomainPolicy),
 		eventInURISamplingRate: eventInURISamplingRate,
+		handleLargeEvents:      handleLargeEvents,
 	}
 
 	for _, origin := range CORSOrigins {
@@ -202,22 +198,21 @@ func sanitizeHostValue(host string) string {
 	return strings.Replace(hostWithoutPort, ".", "_", -1)
 }
 
-func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, context *requestContext) int {
-	statTimer := newTimerInstance()
-
+// ExtractEvent returns the spade Event from the request or splits the request and writes out each event.
+func (s *SpadeHandler) ExtractEvent(r *http.Request, values url.Values, context *RequestContext, statTimer *TimerInstance) (*spade.Event, int) {
 	xForwardedFor := r.Header.Get(context.IPHeader)
 	clientIP := parseLastForwarder(xForwardedFor)
 
-	context.Timers["ip"] = statTimer.stopTiming()
+	context.Timers["ip"] = statTimer.StopTiming()
 
 	err := r.ParseForm()
 	if err != nil {
 		if err.Error() == largeBodyErrorString {
 			s.logLargeRequestError(r, "")
-			return http.StatusRequestEntityTooLarge
+			return nil, http.StatusRequestEntityTooLarge
 		}
 		_ = s.StatLogger.Inc("bad_request.parse_form", 1, 0.01)
-		return http.StatusBadRequest
+		return nil, http.StatusBadRequest
 	}
 
 	if _, ok := values["data"]; ok {
@@ -244,10 +239,10 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 		if err != nil {
 			if err.Error() == largeBodyErrorString {
 				s.logLargeRequestError(r, string(b))
-				return http.StatusRequestEntityTooLarge
+				return nil, http.StatusRequestEntityTooLarge
 			}
 			_ = s.StatLogger.Inc("bad_request.read_data", 1, 0.01)
-			return http.StatusBadRequest
+			return nil, http.StatusBadRequest
 		}
 		if bytes.Equal(b[:5], dataFlag) {
 			context.BadClient = true
@@ -258,7 +253,7 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 	}
 	if data == "" {
 		_ = s.StatLogger.Inc("bad_request.empty", 1, 0.01)
-		return http.StatusBadRequest
+		return nil, http.StatusBadRequest
 	}
 
 	var userAgent string
@@ -271,10 +266,12 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 		}
 	}
 
-	context.Timers["data"] = statTimer.stopTiming()
-
+	context.Timers["data"] = statTimer.StopTiming()
 	bData := []byte(data)
 	if len(bData) > maxBytesPerRequest {
+		if !s.handleLargeEvents {
+			return nil, http.StatusRequestEntityTooLarge
+		}
 		_ = s.StatLogger.Inc("split_large_request.request.total", 1, 0.1)
 		var n int
 		encoding := spade.DetermineBase64Encoding(bData)
@@ -287,14 +284,14 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 			logger.WithError(err).Warn("Error base64-decoding large request")
 			s.logLargeRequestError(r, data)
 			_ = s.StatLogger.Inc("split_large_request.request.fail.base64", 1, 0.1)
-			return http.StatusRequestEntityTooLarge
+			return nil, http.StatusRequestEntityTooLarge
 		}
 
 		if n < 1 || !bytes.Equal(bData[:2], []byte("[{")) {
 			logger.Warn("Unexpectd bytes in large event")
 			s.logLargeRequestError(r, data)
 			_ = s.StatLogger.Inc("split_large_request.request.fail.json", 1, 0.1)
-			return http.StatusRequestEntityTooLarge
+			return nil, http.StatusRequestEntityTooLarge
 		}
 		var events []json.RawMessage
 		err = json.Unmarshal(bData[:n], &events)
@@ -302,10 +299,10 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 			logger.WithError(err).Warn("Error unmarshaling large request into JSON")
 			_ = s.StatLogger.Inc("split_large_request.request.fail.json", 1, 0.1)
 			s.logLargeRequestError(r, data)
-			return http.StatusRequestEntityTooLarge
+			return nil, http.StatusRequestEntityTooLarge
 		}
 		defer func() {
-			context.Timers["write"] = statTimer.stopTiming()
+			context.Timers["write"] = statTimer.StopTiming()
 		}()
 		statusCode := http.StatusNoContent
 		var successCount, failCount int64
@@ -316,7 +313,8 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 				s.logLargeRequestError(r, encEvent)
 				statusCode = http.StatusRequestEntityTooLarge
 			}
-			err = s.writeEvent(encEvent, context, clientIP, xForwardedFor, userAgent)
+			event := s.buildEvent(encEvent, context, clientIP, xForwardedFor, userAgent)
+			err = s.EdgeLoggers.log(event, context)
 			if err != nil {
 				logger.WithError(err).Warn("Error writing to logger")
 				failCount++
@@ -337,32 +335,41 @@ func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, c
 		// If we only failed to write some, indicate success so we don't duplicate.
 		if successCount == 0 {
 			_ = s.StatLogger.Inc("split_large_request.request.fail.write", 1, 0.1)
-			return http.StatusInternalServerError
+			return nil, http.StatusInternalServerError
 		}
-		return statusCode
+		return nil, statusCode
 	}
-	defer func() {
-		context.Timers["write"] = statTimer.stopTiming()
-	}()
-	err = s.writeEvent(data, context, clientIP, xForwardedFor, userAgent)
-	if err != nil {
-		logger.WithError(err).Warn("Error writing to logger")
-		return http.StatusInternalServerError
-	}
-
+	event := s.buildEvent(data, context, clientIP, xForwardedFor, userAgent)
 	if shouldWritePixel(values) {
-		return http.StatusOK
+		return event, http.StatusOK
 	}
+	return event, http.StatusNoContent
 
-	return http.StatusNoContent
 }
 
-func (s *SpadeHandler) writeEvent(data string, context *requestContext, clientIP net.IP,
-	xForwardedFor string, userAgent string) error {
+func (s *SpadeHandler) handleSpadeRequests(r *http.Request, values url.Values, context *RequestContext) int {
+	statTimer := NewTimerInstance()
+	event, statusCode := s.ExtractEvent(r, values, context, statTimer)
+
+	if event != nil {
+		defer func() {
+			context.Timers["write"] = statTimer.StopTiming()
+		}()
+		err := s.EdgeLoggers.log(event, context)
+		if err != nil {
+			logger.WithError(err).Warn("Error writing to logger")
+			return http.StatusInternalServerError
+		}
+	}
+	return statusCode
+}
+
+func (s *SpadeHandler) buildEvent(data string, context *RequestContext, clientIP net.IP,
+	xForwardedFor string, userAgent string) *spade.Event {
 	count := atomic.AddUint64(&s.eventCount, 1)
 	uuid := fmt.Sprintf("%s-%08x-%08x", s.instanceID, context.Now.Unix(), count)
 
-	event := spade.NewEvent(
+	return spade.NewEvent(
 		context.Now,
 		clientIP,
 		xForwardedFor,
@@ -371,8 +378,6 @@ func (s *SpadeHandler) writeEvent(data string, context *requestContext, clientIP
 		userAgent,
 		s.EdgeType,
 	)
-
-	return s.EdgeLoggers.log(event, context)
 }
 
 func (s *SpadeHandler) isAcceptableOrigin(origin string) bool {
@@ -384,10 +389,11 @@ func (s *SpadeHandler) isAcceptableOrigin(origin string) bool {
 	return false
 }
 
-func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// RequestSetup initializes a Request, writing headers and returning a RequestContext.
+func (s *SpadeHandler) RequestSetup(w http.ResponseWriter, r *http.Request) *RequestContext {
 	if !allowedMethods[r.Method] {
 		w.WriteHeader(http.StatusBadRequest)
-		return
+		return nil
 	}
 	w.Header().Set("Vary", "Origin")
 
@@ -400,10 +406,10 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "OPTIONS" {
 		w.Header().Set("Access-Control-Max-Age", corsMaxAge)
 		w.WriteHeader(http.StatusOK)
-		return
+		return nil
 	}
 
-	context := &requestContext{
+	return &RequestContext{
 		Now:       s.Time(),
 		Method:    r.Method,
 		Endpoint:  r.URL.Path,
@@ -411,16 +417,35 @@ func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Timers:    make(map[string]time.Duration, nTimers),
 		BadClient: false,
 	}
-	timer := newTimerInstance()
-	status := s.serve(w, r, context)
-	_ = s.StatLogger.Inc(fmt.Sprintf("status_code.%d", status), 1, 0.001)
-	context.setStatus(status)
-	context.Timers["http"] = timer.stopTiming()
-
-	context.recordStats(s.StatLogger)
 }
 
-func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *requestContext) int {
+// ServeHTTP services an HTTP request.
+func (s *SpadeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	context := s.RequestSetup(w, r)
+	if context == nil {
+		return
+	}
+	timer := NewTimerInstance()
+	status := s.serve(w, r, context)
+	_ = s.StatLogger.Inc(fmt.Sprintf("status_code.%d", status), 1, 0.001)
+	context.Status = status
+	context.Timers["http"] = timer.StopTiming()
+
+	context.RecordStats(s.StatLogger)
+}
+
+// WriteCrossDomainPolicy writes the handler's cross-domain policy to the writer.
+func (s *SpadeHandler) WriteCrossDomainPolicy(w http.ResponseWriter) int {
+	w.Header().Add("Content-Type", xmlApplicationType)
+	_, err := w.Write(s.crossDomainPolicy)
+	if err != nil {
+		logger.WithError(err).Error("Unable to write crossdomain.xml contents")
+		return http.StatusInternalServerError
+	}
+	return http.StatusOK
+}
+
+func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *RequestContext) int {
 	var status int
 	path := r.URL.Path
 	if strings.HasPrefix(path, "/v1/") {
@@ -428,13 +453,7 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *re
 	}
 	switch path {
 	case "/crossdomain.xml":
-		w.Header().Add("Content-Type", xmlApplicationType)
-		_, err := w.Write(xDomainContents)
-		if err != nil {
-			logger.WithError(err).Error("Unable to write crossdomain.xml contents")
-			return http.StatusInternalServerError
-		}
-		return http.StatusOK
+		return s.WriteCrossDomainPolicy(w)
 	case "/healthcheck":
 		status = http.StatusOK
 	case "/xarth":

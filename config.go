@@ -17,6 +17,7 @@ var config struct {
 	RollbarToken           string
 	RollbarEnvironment     string
 	EventInURISamplingRate float32
+	CrossDomainPolicy      string
 }
 
 func loadConfig(filename string) error {

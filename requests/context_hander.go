@@ -9,24 +9,27 @@ import (
 	"github.com/twitchscience/spade_edge/loggers"
 )
 
-// TODO naming?
-type timerInstance struct {
+// TimerInstance returns the time since the start or last time it was stopped.
+type TimerInstance struct {
 	start time.Time
 }
 
-func newTimerInstance() *timerInstance {
-	return &timerInstance{
+// NewTimerInstance builds a TimerInstance.
+func NewTimerInstance() *TimerInstance {
+	return &TimerInstance{
 		start: time.Now().UTC(),
 	}
 }
 
-func (t *timerInstance) stopTiming() (r time.Duration) {
+// StopTiming returns the time since start/the last StopTiming call and starts a new timer.
+func (t *TimerInstance) StopTiming() (r time.Duration) {
 	r = time.Since(t.start)
 	t.start = time.Now().UTC()
 	return
 }
 
-type requestContext struct {
+// RequestContext is contextual information for a request.
+type RequestContext struct {
 	Now           time.Time
 	Method        string
 	IPHeader      string
@@ -37,18 +40,15 @@ type requestContext struct {
 	BadClient     bool
 }
 
-func (r *requestContext) setStatus(s int) *requestContext {
-	r.Status = s
-	return r
-}
-
-func (r *requestContext) recordLoggerAttempt(err error, name string) {
+// RecordLoggerAttempt records failed logging attempts for later reporting.
+func (r *RequestContext) RecordLoggerAttempt(err error, name string) {
 	if err != nil && err != loggers.ErrUndefined {
 		r.FailedLoggers = append(r.FailedLoggers, name)
 	}
 }
 
-func (r *requestContext) recordStats(statter statsd.Statter) {
+// RecordStats sends the request's stats to the statter.
+func (r *RequestContext) RecordStats(statter statsd.StatSender) {
 	prefix := strings.Join([]string{
 		r.Method,
 		strings.Replace(r.Endpoint, ".", "_", -1),

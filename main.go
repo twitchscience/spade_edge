@@ -176,7 +176,10 @@ func main() {
 			instanceID,
 			config.CorsOrigins,
 			config.EventInURISamplingRate,
-			*edgeType),
+			config.CrossDomainPolicy,
+			*edgeType,
+			true,
+		),
 		ReadTimeout:    15 * time.Second,
 		WriteTimeout:   5 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1MB

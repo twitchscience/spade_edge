@@ -196,7 +196,8 @@ func makeSpadeHandler(s statsd.Statter, edgeType string) *SpadeHandler {
 	c := s
 	loggers := NewEdgeLoggers()
 	loggers.S3EventLogger = &testEdgeLogger{}
-	spadeHandler := NewSpadeHandler(c, loggers, instanceID, corsOrigins, 1, edgeType)
+	spadeHandler := NewSpadeHandler(c, loggers, instanceID, corsOrigins, 1, "crossDomainXML",
+		edgeType, true)
 	spadeHandler.Time = func() time.Time { return fixedTime }
 	return spadeHandler
 }
@@ -356,7 +357,7 @@ func TestHandle(t *testing.T) {
 		if tt.Request.ContentType != "" {
 			req.Header.Add("Content-Type", tt.Request.ContentType)
 		}
-		context := &requestContext{
+		context := &RequestContext{
 			Now:      epoch,
 			Method:   req.Method,
 			Endpoint: req.URL.Path,
@@ -550,7 +551,7 @@ var (
 			},
 			Response: testResponse{
 				Code: http.StatusOK,
-				Body: string(xDomainContents),
+				Body: "crossDomainXML",
 			},
 		},
 		{
