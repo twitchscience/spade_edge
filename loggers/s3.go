@@ -2,11 +2,13 @@ package loggers
 
 import (
 	"fmt"
+	"path"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/s3/s3manager/s3manageriface"
 	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
 
+	"github.com/twitchscience/aws_utils/logger"
 	"github.com/twitchscience/aws_utils/uploader"
 	"github.com/twitchscience/gologging/gologging"
 	"github.com/twitchscience/gologging/key_name_generator"
@@ -18,8 +20,9 @@ import (
 type EventToStringFunc func(*spade.Event) (string, error)
 
 type s3Logger struct {
-	uploadLogger      *gologging.UploadLogger
+	uploadLoggers     []*gologging.UploadLogger
 	eventToStringFunc EventToStringFunc
+	messages          chan<- string
 }
 
 // S3LoggerConfig configures a new SpadeEdgeLogger that writes
@@ -30,6 +33,7 @@ type S3LoggerConfig struct {
 	ErrorQueue   string
 	MaxLines     int
 	MaxAge       string
+	NumS3Loggers int
 }
 
 // NewS3Logger returns a new SpadeEdgeLogger that events to S3 after
@@ -48,7 +52,12 @@ func NewS3Logger(
 
 	maxAge, err := time.ParseDuration(config.MaxAge)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing %s as a time.Duration: %v", config.MaxAge, err)
+		return nil, fmt.Errorf("parsing %s as a time.Duration: %v", config.MaxAge, err)
+	}
+
+	numLoggers := config.NumS3Loggers
+	if numLoggers <= 0 {
+		return nil, fmt.Errorf("number of S3 loggers (%d) is not set or not positive", numLoggers)
 	}
 
 	if len(config.SuccessQueue) > 0 {
@@ -59,33 +68,50 @@ func NewS3Logger(
 		errorNotifier = buildSQSErrorHarness(sqs, config.ErrorQueue)
 	}
 
-	rotateCoordinator := gologging.NewRotateCoordinator(config.MaxLines, maxAge)
-	loggingInfo := key_name_generator.BuildInstanceInfo(&key_name_generator.EnvInstanceFetcher{}, config.Bucket, loggingDir)
+	uploadLoggers := make([]*gologging.UploadLogger, 0, numLoggers)
+	for i := 0; i < numLoggers; i++ {
+		loggingInfo := key_name_generator.BuildInstanceInfo(
+			&key_name_generator.EnvInstanceFetcher{},
+			config.Bucket,
+			path.Join(loggingDir, string(i)),
+		)
 
-	s3Uploader := uploader.NewFactory(
-		config.Bucket,
-		&key_name_generator.EdgeKeyNameGenerator{Info: loggingInfo},
-		S3Uploader,
-	)
+		s3UploaderFactory := uploader.NewFactory(
+			config.Bucket,
+			&key_name_generator.EdgeKeyNameGenerator{Info: loggingInfo},
+			S3Uploader,
+		)
 
-	uploadLogger, err := gologging.StartS3Logger(
-		rotateCoordinator,
-		loggingInfo,
-		successNotifier,
-		s3Uploader,
-		errorNotifier,
-		2,
-	)
+		uploadLogger, err := gologging.StartS3Logger(
+			gologging.NewRotateCoordinator(config.MaxLines, maxAge),
+			loggingInfo,
+			successNotifier,
+			s3UploaderFactory,
+			errorNotifier,
+			2,
+		)
 
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
+
+		uploadLoggers = append(uploadLoggers, uploadLogger)
 	}
+
+	messages := make(chan string)
+	logger.Go(func() {
+		i := 0
+		for s := range messages {
+			uploadLoggers[i].Log(s)
+			i = (i + 1) % numLoggers
+		}
+	})
 
 	s3l := &s3Logger{
-		uploadLogger:      uploadLogger,
+		uploadLoggers:     uploadLoggers,
 		eventToStringFunc: printFunc,
+		messages:          messages,
 	}
-
 	return s3l, nil
 }
 
@@ -94,10 +120,13 @@ func (s3l *s3Logger) Log(e *spade.Event) error {
 	if err != nil {
 		return err
 	}
-	s3l.uploadLogger.Log(s)
+	s3l.messages <- s
 	return nil
 }
 
 func (s3l *s3Logger) Close() {
-	s3l.uploadLogger.Close()
+	close(s3l.messages)
+	for _, u := range s3l.uploadLoggers {
+		u.Close()
+	}
 }
