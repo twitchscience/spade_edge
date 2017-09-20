@@ -3,6 +3,7 @@ package loggers
 import (
 	"fmt"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/s3/s3manager/s3manageriface"
@@ -73,7 +74,7 @@ func NewS3Logger(
 		loggingInfo := key_name_generator.BuildInstanceInfo(
 			&key_name_generator.EnvInstanceFetcher{},
 			config.Bucket,
-			path.Join(loggingDir, string(i)),
+			path.Join(loggingDir, strconv.Itoa(i)),
 		)
 
 		s3UploaderFactory := uploader.NewFactory(
