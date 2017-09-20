@@ -2,8 +2,6 @@ package loggers
 
 import (
 	"fmt"
-	"path"
-	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/s3/s3manager/s3manageriface"
@@ -69,20 +67,16 @@ func NewS3Logger(
 		errorNotifier = buildSQSErrorHarness(sqs, config.ErrorQueue)
 	}
 
+	loggingInfo := key_name_generator.BuildInstanceInfo(&key_name_generator.EnvInstanceFetcher{}, config.Bucket, loggingDir)
+
+	s3UploaderFactory := uploader.NewFactory(
+		config.Bucket,
+		&key_name_generator.EdgeKeyNameGenerator{Info: loggingInfo},
+		S3Uploader,
+	)
+
 	uploadLoggers := make([]*gologging.UploadLogger, 0, numLoggers)
 	for i := 0; i < numLoggers; i++ {
-		loggingInfo := key_name_generator.BuildInstanceInfo(
-			&key_name_generator.EnvInstanceFetcher{},
-			config.Bucket,
-			path.Join(loggingDir, strconv.Itoa(i)),
-		)
-
-		s3UploaderFactory := uploader.NewFactory(
-			config.Bucket,
-			&key_name_generator.EdgeKeyNameGenerator{Info: loggingInfo},
-			S3Uploader,
-		)
-
 		uploadLogger, err := gologging.StartS3Logger(
 			gologging.NewRotateCoordinator(config.MaxLines, maxAge),
 			loggingInfo,
