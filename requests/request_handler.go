@@ -445,6 +445,17 @@ func (s *SpadeHandler) WriteCrossDomainPolicy(w http.ResponseWriter) int {
 	return http.StatusOK
 }
 
+// WriteRobotsTxt writes the handler's robot policy to the writer.
+func (s *SpadeHandler) WriteRobotsTxt(w http.ResponseWriter) int {
+	w.Header().Add("Content-Type", "text/plain")
+	_, err := w.Write([]byte("User-agent: *\nDisallow: /"))
+	if err != nil {
+		logger.WithError(err).Error("Unable to write robots.txt contents")
+		return http.StatusInternalServerError
+	}
+	return http.StatusOK
+}
+
 func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *RequestContext) int {
 	var status int
 	path := r.URL.Path
@@ -454,6 +465,8 @@ func (s *SpadeHandler) serve(w http.ResponseWriter, r *http.Request, context *Re
 	switch path {
 	case "/crossdomain.xml":
 		return s.WriteCrossDomainPolicy(w)
+	case "/robots.txt":
+		return s.WriteRobotsTxt(w)
 	case "/healthcheck":
 		status = http.StatusOK
 	case "/xarth":
