@@ -2,6 +2,7 @@ package loggers
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/s3/s3manager/s3manageriface"
@@ -22,6 +23,7 @@ type s3Logger struct {
 	uploadLoggers     []*gologging.UploadLogger
 	eventToStringFunc EventToStringFunc
 	messages          chan<- string
+	wg                *sync.WaitGroup
 }
 
 // S3LoggerConfig configures a new SpadeEdgeLogger that writes
@@ -75,6 +77,9 @@ func NewS3Logger(
 		S3Uploader,
 	)
 
+	wg := &sync.WaitGroup{}
+	wg.Add(numLoggers)
+	messages := make(chan string)
 	uploadLoggers := make([]*gologging.UploadLogger, 0, numLoggers)
 	for i := 0; i < numLoggers; i++ {
 		uploadLogger, err := gologging.StartS3Logger(
@@ -90,22 +95,21 @@ func NewS3Logger(
 			return nil, err
 		}
 
+		logger.Go(func() {
+			for s := range messages {
+				uploadLogger.Log(s)
+			}
+			wg.Done()
+		})
+
 		uploadLoggers = append(uploadLoggers, uploadLogger)
 	}
-
-	messages := make(chan string)
-	logger.Go(func() {
-		i := 0
-		for s := range messages {
-			uploadLoggers[i].Log(s)
-			i = (i + 1) % numLoggers
-		}
-	})
 
 	s3l := &s3Logger{
 		uploadLoggers:     uploadLoggers,
 		eventToStringFunc: printFunc,
 		messages:          messages,
+		wg:				   wg,
 	}
 	return s3l, nil
 }
@@ -121,6 +125,7 @@ func (s3l *s3Logger) Log(e *spade.Event) error {
 
 func (s3l *s3Logger) Close() {
 	close(s3l.messages)
+	s3l.wg.Wait()
 	for _, u := range s3l.uploadLoggers {
 		u.Close()
 	}
