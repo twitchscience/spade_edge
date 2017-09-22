@@ -109,7 +109,7 @@ func NewS3Logger(
 		uploadLoggers:     uploadLoggers,
 		eventToStringFunc: printFunc,
 		messages:          messages,
-		wg:				   wg,
+		wg:                wg,
 	}
 	return s3l, nil
 }
