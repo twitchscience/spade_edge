@@ -130,12 +130,11 @@ func main() {
 		logger.WithField("edgeType", *edgeType).Fatal("Invalid edge type")
 	}
 
-	// Trigger close on receipt of SIGINT
 	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, syscall.SIGINT)
+	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 	logger.Go(func() {
 		<-sigc
-		logger.Info("Sigint received -- shutting down")
+		logger.Info("Sigint/term received -- shutting down")
 		edgeLoggers.Close()
 		logger.Info("Exiting main cleanly.")
 		logger.Wait()
