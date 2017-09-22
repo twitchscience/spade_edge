@@ -1,0 +1,14 @@
+# Systemd service at /etc/systemd/system/mount_ebslvm.service
+
+[Unit]
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/sbin/ebslvm vgebs lvebs /mnt
+ExecStartPre=/bin/chmod g+w /mnt
+ExecStart=/bin/chgrp edge /mnt
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

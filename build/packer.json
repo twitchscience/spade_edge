@@ -69,13 +69,19 @@
         "sudo chmod +x /opt/science/{{user `project`}}/bin/*",
         "curl -O {{user `seeker_debian`}}",
         "sudo dpkg -i seeker_1.0.3_amd64.deb",
-        "for f in /opt/science/{{user `project`}}/config/upstart/*.conf; do sudo ln -s $f /etc/init/$(basename $f); done",
 
         "sudo groupadd edge",
         "sudo mkdir /opt/science/{{user `project`}}/config/runtime",
         "sudo chgrp edge /opt/science/{{user `project`}}/config/runtime",
         "sudo chmod g+w /opt/science/{{user `project`}}/config/runtime",
-        "sudo setcap 'cap_net_bind_service=+ep' /opt/science/{{user `project`}}/bin/spade_edge"
+        "sudo setcap 'cap_net_bind_service=+ep' /opt/science/{{user `project`}}/bin/spade_edge",
+
+        "echo -- [configuring systemd and logging] --",
+        "sudo mv /opt/science/{{user `project`}}/config/systemd/spade_edge.service /etc/systemd/system/spade_edge.service",
+        "sudo mv /opt/science/{{user `project`}}/config/systemd/mount_ebslvm.service /etc/systemd/system/mount_ebslvm.service",
+        "sudo systemctl enable spade_edge",
+        "sudo systemctl enable mount_ebslvm",
+        "sudo mv /opt/science/{{user `project`}}/config/journald-cloudwatch-logs.conf /etc/journald-cloudwatch-logs.conf"
       ]
     }
   ]
