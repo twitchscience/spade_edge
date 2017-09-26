@@ -68,7 +68,7 @@
       [
         "sudo chmod +x /opt/science/{{user `project`}}/bin/*",
         "curl -O {{user `seeker_debian`}}",
-        "sudo dpkg -i seeker_1.0.3_amd64.deb",
+        "sudo trihard.sh 'install seeker debian' 'dpkg -i seeker_1.0.3_amd64.deb'",
 
         "sudo groupadd edge",
         "sudo mkdir /opt/science/{{user `project`}}/config/runtime",

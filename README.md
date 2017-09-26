@@ -1,4 +1,3 @@
-
 # Spade Edge
 
 Spade Edge is the entry point for data into the Spade pipeline.  It is a
