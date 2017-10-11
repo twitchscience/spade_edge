@@ -15,6 +15,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -84,6 +85,8 @@ func newS3Logger(loggerType string,
 }
 
 func main() {
+	runtime.SetBlockProfileRate(100000)
+
 	flag.Parse()
 	err := loadConfig(*configFilename)
 	if err != nil {
