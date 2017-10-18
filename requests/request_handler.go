@@ -241,6 +241,12 @@ func (s *SpadeHandler) ExtractEvent(r *http.Request, values url.Values, context 
 				s.logLargeRequestError(r, string(b))
 				return nil, http.StatusRequestEntityTooLarge
 			}
+			if strings.HasSuffix(err.Error(), "i/o timeout") {
+				_ = s.StatLogger.Inc("bad_request.read_timeout", 1, 0.01)
+				// Temporary hack to mimic old 502 behavior on timeouts.
+				// We really should return StatusRequestTimeout
+				return nil, http.StatusBadGateway
+			}
 			_ = s.StatLogger.Inc("bad_request.read_data", 1, 0.01)
 			return nil, http.StatusBadRequest
 		}

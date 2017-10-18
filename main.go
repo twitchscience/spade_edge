@@ -180,7 +180,7 @@ func main() {
 			true,
 		),
 		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   5 * time.Second,
+		WriteTimeout:   20 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
