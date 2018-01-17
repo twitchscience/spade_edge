@@ -1,11 +1,6 @@
 package loggers
 
 import (
-	"errors"
-	"fmt"
-	"os"
-	"strconv"
-
 	"github.com/aws/aws-sdk-go/service/sqs/sqsiface"
 	"github.com/twitchscience/aws_utils/logger"
 	"github.com/twitchscience/aws_utils/notifier"
@@ -53,30 +48,6 @@ func (s *SQSErrorHarness) SendError(er error) {
 // SendMessage writes an SQS message of type 'edge' to the SQS queue stored in the SQSNotifierHarness
 func (s *SQSNotifierHarness) SendMessage(message *uploader.UploadReceipt) error {
 	return s.notifier.SendMessage("edge", s.qName, s.version, message.KeyName)
-}
-
-func buildSQSNotifierHarness(sqs sqsiface.SQSAPI, name string) uploader.NotifierHarness {
-	if len(name) > 0 {
-		version, err := strconv.Atoi(os.Getenv("EDGE_VERSION"))
-		if err != nil {
-			logger.WithError(err).Error("Error getting EDGE_VERSION from environment")
-		}
-
-		client := notifier.BuildSQSClient(sqs)
-		client.Signer.RegisterMessageType("edge", func(args ...interface{}) (string, error) {
-			if len(args) < 2 {
-				return "", errors.New("Missing correct number of args ")
-			}
-			return fmt.Sprintf("{\"version\":%d,\"keyname\":%q}", args...), nil
-		})
-		return &SQSNotifierHarness{
-			qName:    name,
-			version:  version,
-			notifier: client,
-		}
-	}
-
-	return nil
 }
 
 func buildSQSErrorHarness(sqs sqsiface.SQSAPI, name string) uploader.ErrorNotifierHarness {
