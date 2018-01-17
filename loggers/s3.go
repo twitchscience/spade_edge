@@ -25,11 +25,10 @@ type s3Logger struct {
 // S3LoggerConfig configures a new SpadeEdgeLogger that writes
 // lines of text to AWS S3
 type S3LoggerConfig struct {
-	Bucket       string
-	SuccessQueue string
-	ErrorQueue   string
-	MaxLines     int
-	MaxAge       string
+	Bucket     string
+	ErrorQueue string
+	MaxLines   int
+	MaxAge     string
 }
 
 // NewS3Logger returns a new SpadeEdgeLogger that events to S3 after
@@ -49,10 +48,6 @@ func NewS3Logger(
 	maxAge, err := time.ParseDuration(config.MaxAge)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing %s as a time.Duration: %v", config.MaxAge, err)
-	}
-
-	if len(config.SuccessQueue) > 0 {
-		successNotifier = buildSQSNotifierHarness(sqs, config.SuccessQueue)
 	}
 
 	if len(config.ErrorQueue) > 0 {

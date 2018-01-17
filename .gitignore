@@ -3,3 +3,4 @@ libexec
 Vagrantfile
 .vagrant
 spade_edge
+test_results/
