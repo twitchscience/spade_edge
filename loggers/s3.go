@@ -13,6 +13,23 @@ import (
 	"github.com/twitchscience/scoop_protocol/spade"
 )
 
+// DummyNotifierHarness is a struct that implements the uploader.NotifierHarness
+// and uploader.NotifierHarness with nop implementations.
+//
+// It exists because the code that uses the Harnesses doesn't accept nil for cases
+// where we do not want to notify at all.
+type DummyNotifierHarness struct {
+}
+
+// SendMessage - nop implementation
+func (d *DummyNotifierHarness) SendMessage(r *uploader.UploadReceipt) error {
+	return nil
+}
+
+// SendError - nop implementation
+func (d *DummyNotifierHarness) SendError(error) {
+}
+
 // An EventToStringFunc takes a spade event and converts it
 //to a string for logging into a line oriented file on s3
 type EventToStringFunc func(*spade.Event) (string, error)
@@ -25,10 +42,9 @@ type s3Logger struct {
 // S3LoggerConfig configures a new SpadeEdgeLogger that writes
 // lines of text to AWS S3
 type S3LoggerConfig struct {
-	Bucket     string
-	ErrorQueue string
-	MaxLines   int
-	MaxAge     string
+	Bucket   string
+	MaxLines int
+	MaxAge   string
 }
 
 // NewS3Logger returns a new SpadeEdgeLogger that events to S3 after
@@ -40,18 +56,9 @@ func NewS3Logger(
 	sqs sqsiface.SQSAPI,
 	S3Uploader s3manageriface.UploaderAPI,
 ) (SpadeEdgeLogger, error) {
-	var (
-		successNotifier uploader.NotifierHarness      = &DummyNotifierHarness{}
-		errorNotifier   uploader.ErrorNotifierHarness = &DummyNotifierHarness{}
-	)
-
 	maxAge, err := time.ParseDuration(config.MaxAge)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing %s as a time.Duration: %v", config.MaxAge, err)
-	}
-
-	if len(config.ErrorQueue) > 0 {
-		errorNotifier = buildSQSErrorHarness(sqs, config.ErrorQueue)
 	}
 
 	rotateCoordinator := gologging.NewRotateCoordinator(config.MaxLines, maxAge)
@@ -66,9 +73,9 @@ func NewS3Logger(
 	uploadLogger, err := gologging.StartS3Logger(
 		rotateCoordinator,
 		loggingInfo,
-		successNotifier,
+		&DummyNotifierHarness{},
 		s3Uploader,
-		errorNotifier,
+		&DummyNotifierHarness{},
 		2,
 	)
 
