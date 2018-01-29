@@ -2,7 +2,7 @@
 
 [Unit]
 After=cloud-final.service mount_ebslvm.service journald-cloudwatch-logs.service
-Wants=cloud-final.service mount_ebslvm.service journald-cloudwatch-logs.service
+Requires=cloud-final.service mount_ebslvm.service journald-cloudwatch-logs.service
 StartLimitInterval=0
 
 [Service]
