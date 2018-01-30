@@ -1,3 +1,5 @@
+***NOTE: This project is no longer being updated publicly.***
+
 # Spade Edge
 
 Spade Edge is the entry point for data into the Spade pipeline.  It is a
